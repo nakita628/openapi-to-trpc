@@ -1,0 +1,20 @@
+{
+  "name": "@openapi-to-trpc/test",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "vp check",
+    "fix": "vp check --fix",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "^4.0.0-rc.112",
+    "@trpc/server": "^11.18.0",
+    "@types/node": "^26.4.0",
+    "arktype": "^2.2.3",
+    "effect": "^4.0.0-rc.112",
+    "typescript": "^7.0.2",
+    "valibot": "^1.5.0",
+    "zod": "^4.6.2"
+  }
+}

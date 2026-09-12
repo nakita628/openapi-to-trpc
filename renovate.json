@@ -1,0 +1,59 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":separateMultipleMajorReleases",
+    "security:openssf-scorecard"
+  ],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["* * * * 6"],
+  "dependencyDashboardAutoclose": true,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": "1 day"
+  },
+  "platformAutomerge": false,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["* * * * 6"]
+  },
+  "packageRules": [
+    {
+      "matchDatasources": ["npm", "github-actions"],
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "The Effect 4 release candidates ship as one set: @effect/platform-node's caret range on @effect/platform-node-shared floats to the newest rc, which peers the matching effect. effect and @effect/* move in one PR so the lockfile never mixes two rcs.",
+      "matchPackageNames": ["effect", "@effect/**"],
+      "groupName": "effect"
+    },
+    {
+      "description": "The prose linters are one toolchain: their configs sit side by side at the repository root and a rule change in one is reviewed against the others.",
+      "matchPackageNames": [
+        "cspell",
+        "markdownlint-cli2",
+        "secretlint",
+        "@secretlint/**",
+        "textlint",
+        "textlint-*",
+        "@textlint-rule/**"
+      ],
+      "groupName": "prose linters"
+    },
+    {
+      "matchUpdateTypes": ["pin", "pinDigest"],
+      "automerge": true
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "matchCurrentVersion": "!/^0/",
+      "automerge": true
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": false
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+# Words cspell does not know but this project uses on purpose. One per line, sorted, lowercase
+# unless the casing itself is the point. Adding a word is a one-line diff; adding a *typo* here
+# is how the check stops working, so keep it to terms that really recur.
+arktype
+artipacked
+bsdtar
+codegen
+extensionless
+GOARCH
+metavar
+msgpackr
+msvc
+nakita
+openssf
+pipefail
+rhysd
+sapegin
+takibi
+textlint
+uncapitalize
+voidzero
+zizmor
+zizmorcore

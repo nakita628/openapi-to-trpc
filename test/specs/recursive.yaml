@@ -1,0 +1,48 @@
+openapi: 3.1.0
+info:
+  title: Recursive schemas
+  version: 1.0.0
+paths:
+  /categories:
+    get:
+      summary: Category tree
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+components:
+  schemas:
+    Comment:
+      type: object
+      required:
+        - body
+      properties:
+        body:
+          type: string
+        replies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+    Category:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        parent:
+          $ref: '#/components/schemas/CategoryRef'
+        comments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+    CategoryRef:
+      type: object
+      properties:
+        category:
+          $ref: '#/components/schemas/Category'

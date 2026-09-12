@@ -1,1 +1,1 @@
-# openapi-to-trpc
+packages/openapi-to-trpc/README.md
