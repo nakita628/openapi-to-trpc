@@ -1,0 +1,46 @@
+name: Test
+
+# Build, test and check the workspace with the same commands a developer runs locally: the root
+# package.json scripts are the repository's single definition of "clean", so CI and the working
+# copy can never disagree about what it means.
+#
+# Action versions are pinned to a commit digest with the tag kept as a comment. A floating tag is
+# a mutable dependency with write access to the job.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Node 24 runs the TypeScript under scripts/ (actionlint, zizmor) without a build step.
+      - uses: voidzero-dev/setup-vp@49c3e4e92c52e7f8392712a9267bbe71c5ab30e5 # v1.19.0
+        with:
+          node-version: '24'
+          cache: true
+
+      - run: vp install --frozen-lockfile
+
+      # The CLI reads its version from the package.json beside dist/cli.js, and a broken bundle
+      # should fail here rather than at publish time.
+      - run: vp run --filter ./packages/openapi-to-trpc build
+
+      - run: vp run --filter ./packages/openapi-to-trpc test
+
+      # Generates test/__generated__ for every validator library, type-checks it with tsc and
+      # calls the routers through a tRPC caller.
+      - run: vp run --filter ./test test
+
+      # vp fmt, oxlint and the type checks of every workspace, then `pnpm lint`.
+      - run: vp run check

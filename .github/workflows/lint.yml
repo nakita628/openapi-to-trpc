@@ -1,0 +1,36 @@
+name: Lint
+
+# The gates that need no build, as `pnpm lint` runs them locally: the prose of the repository
+# (markdownlint, textlint, cspell), secrets (secretlint) and the workflows themselves (actionlint
+# for the syntax, zizmor for the security posture). scripts/actionlint.ts and scripts/zizmor.ts
+# download the pinned release and verify its checksum, so nothing is installed by hand here.
+#
+# Action versions are pinned to a commit digest with the tag kept as a comment; Renovate keeps
+# them current.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: voidzero-dev/setup-vp@49c3e4e92c52e7f8392712a9267bbe71c5ab30e5 # v1.19.0
+        with:
+          node-version: '24'
+          cache: true
+
+      - run: vp install --frozen-lockfile
+
+      # setup-vp puts `vp` on PATH, not `pnpm`; `vp run` hands its bundled pnpm to the script.
+      - run: vp run lint

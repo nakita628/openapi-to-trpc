@@ -1,0 +1,145 @@
+name: release
+
+# Runs after Test has passed on main. `workflow_run` is the trigger zizmor warns about because
+# it hands a token to code from a pull request when misused; here every job checks out the
+# commit Test ran on (`head_sha`), only for a `push` to main, and the token stays read-only
+# except where a tag or a release is written from that same commit.
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: [Test]
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: release
+  queue: max
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      unpublished: ${{ steps.ver.outputs.unpublished }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Check version and npm publish state
+        id: ver
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -r .version packages/openapi-to-trpc/package.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if ! VERSIONS=$(npm view openapi-to-trpc versions --json); then
+            echo "::error::Failed to query the npm registry for openapi-to-trpc versions. Check https://status.npmjs.org/ and re-run the workflow"
+            exit 1
+          fi
+          if ! PUBLISHED=$(echo "$VERSIONS" | jq --arg version "$VERSION" '[.] | flatten | index($version) != null'); then
+            echo "::error::Unexpected npm registry response. Re-run the workflow"
+            exit 1
+          fi
+          if [ "$PUBLISHED" = "true" ]; then
+            echo "unpublished=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "unpublished=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  tag:
+    runs-on: ubuntu-latest
+    needs: check
+    permissions:
+      contents: write
+    steps:
+      # The token stays in the checkout: the step below pushes the tag with it (.github/zizmor.yml
+      # excuses this one checkout from the artipacked audit).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Create or verify tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+          UNPUBLISHED: ${{ needs.check.outputs.unpublished }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          LS_STATUS=0
+          git ls-remote --exit-code origin "refs/tags/v$VERSION" >/dev/null || LS_STATUS=$?
+          if [ "$LS_STATUS" -eq 2 ]; then
+            if [ "$UNPUBLISHED" = "false" ]; then
+              echo "::error::openapi-to-trpc@$VERSION is already published, but tag v$VERSION does not exist. Cannot safely determine the published commit. Tag the commit that was actually published (git tag v$VERSION <sha> && git push origin v$VERSION), or bump the version and push again"
+              exit 1
+            fi
+            git tag "v$VERSION" "$HEAD_SHA"
+            git push origin "v$VERSION"
+            exit 0
+          fi
+          if [ "$LS_STATUS" -ne 0 ]; then
+            echo "::error::Failed to query origin for tag v$VERSION (git ls-remote exited with $LS_STATUS). Check connectivity to GitHub and re-run the workflow"
+            exit 1
+          fi
+          git fetch --depth=1 origin "refs/tags/v$VERSION:refs/tags/v$VERSION"
+          TAG_SHA=$(git rev-parse "v$VERSION^{commit}")
+          if [ "$TAG_SHA" = "$HEAD_SHA" ]; then
+            echo "tag v$VERSION already points to $HEAD_SHA; skip"
+            exit 0
+          fi
+          if [ "$UNPUBLISHED" = "false" ] && gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "v$VERSION already fully released from $TAG_SHA; nothing to do for $HEAD_SHA"
+            exit 0
+          fi
+          echo "::error::v$VERSION already points to another commit ($TAG_SHA, expected $HEAD_SHA). Re-run the release workflow for $TAG_SHA, or bump the version in packages/openapi-to-trpc/package.json and push again"
+          exit 1
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [check, tag]
+    if: needs.check.outputs.unpublished == 'true'
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - uses: voidzero-dev/setup-vp@49c3e4e92c52e7f8392712a9267bbe71c5ab30e5 # v1.19.0
+        with:
+          node-version: '24'
+          cache: true
+
+      - run: vp install --frozen-lockfile
+
+      - run: vp run openapi-to-trpc#build
+
+      # vp has no publish command; pnpm publishes with npm provenance (id-token: write).
+      - run: corepack enable && pnpm -F openapi-to-trpc publish --no-git-checks
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [check, tag, publish]
+    if: ${{ !cancelled() && needs.check.result == 'success' && needs.tag.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          gh release view "v$VERSION" >/dev/null 2>&1 && { echo "release v$VERSION already exists; skip"; exit 0; }
+          gh release create "v$VERSION" --verify-tag --generate-notes
