@@ -1,12 +1,15 @@
 # Words cspell does not know but this project uses on purpose. One per line, sorted, lowercase
 # unless the casing itself is the point. Adding a word is a one-line diff; adding a *typo* here
 # is how the check stops working, so keep it to terms that really recur.
+apidevtools
 arktype
 artipacked
+asphodelos
 bsdtar
 codegen
 extensionless
 GOARCH
+hekireki
 metavar
 msgpackr
 msvc
@@ -17,6 +20,7 @@ rhysd
 sapegin
 takibi
 textlint
+textlintrc
 uncapitalize
 voidzero
 zizmor

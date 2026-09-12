@@ -1,0 +1,137 @@
+---
+description: Workflows, dependency pinning, and editing the lint, format and build configuration
+globs: .github/**,**/package.json,**/vite.config.ts,**/tsconfig.json,pnpm-workspace.yaml,packages/openapi-to-trpc/lint/**,scripts/**,cspell.config.yaml,project-words.txt,.textlintrc.yml,.markdownlint-cli2.jsonc,.secretlintrc.json,renovate.json
+alwaysApply: false
+---
+
+# CI and configuration
+
+## The workflows
+
+The same three workflows as hono-takibi and hekireki, on `voidzero-dev/setup-vp`:
+
+- `.github/workflows/test.yml` (Test): install → build → package tests → `test/` suite →
+  `vp run check`. A new check is added to the root `package.json` scripts **and** reached from
+  this workflow, so local and CI cannot disagree about what "clean" means.
+- `.github/workflows/lint.yml` (Lint): `vp run lint`, the gates that need no build.
+- `.github/workflows/release.yml` runs after Test succeeds on a push to `main`; see Releasing.
+- **Verify a change to the scripts, the workflows or the build in a fresh clone**, the way CI
+  starts: `git clone . <tmp> && cd <tmp> && pnpm install --frozen-lockfile`, then the workflow's
+  steps in order. The working copy carries gitignored output (`dist`, `test/__generated__`) that
+  a checkout does not have.
+- **Actions are pinned to a commit digest with the tag kept as a comment**:
+  `uses: actions/checkout@3d3c42e5… # v7.0.1`. A floating tag is a mutable dependency with access
+  to the job — never introduce one. Resolve a tag with
+  `git ls-remote https://github.com/<owner>/<repo> 'refs/tags/<tag>^{}'`.
+- `permissions` stays minimal (`contents: read`); checkout uses `persist-credentials: false`,
+  except the release job that pushes the tag.
+- setup-vp puts `vp` on `PATH`, not `pnpm`: a step runs a root script as `vp run <script>`, which
+  hands its pnpm to the script. Node is 24, which runs `scripts/*.ts` directly.
+- actionlint (`scripts/actionlint.ts`) and zizmor (`scripts/zizmor.ts`) download a pinned release
+  and verify its sha256. Bumping one means changing `VERSION` and **every checksum** together:
+  actionlint's from the release's `*_checksums.txt`, zizmor's from each asset's `digest` in the
+  GitHub releases API. Renovate cannot do it.
+- A finding is excused next to the thing it is about, with the reason: an actionlint message in
+  `.github/actionlint.yaml` scoped to one file, a zizmor audit in `.github/zizmor.yml` or an
+  inline `# zizmor: ignore[audit]` comment. Never by dropping the check or the setting.
+- `.github/zizmor.yml` excuses the tag job's checkout **by line and column**
+  (`release.yml:62:9`). An edit above that line in `release.yml` moves it: update the entry in
+  the same change, or zizmor fails.
+
+## Editing the lint configuration
+
+The `lint` block of `packages/openapi-to-trpc/vite.config.ts` is the standard this repository
+holds itself to, and its comments explain the choices. `test/vite.config.ts` has a smaller lint
+block of its own for the suite.
+
+- Adding a rule: place it in the section it belongs to and, if the reason is not obvious from its
+  name, write the reason above it. Then run `pnpm check` and fix what it reports in the code —
+  the rule is not finished until the repository passes it.
+- A rule that does not fit this codebase is **left out of the list**, with a comment where it
+  would have gone saying why (as `unicorn/import-style` is). It is never set to `'off'` in
+  `rules`.
+- `'off'` appears only in `overrides`, scoped to the files it describes, with the reason.
+- `categories` (correctness / suspicious / perf) are errors, so rules in those categories are not
+  restated in `rules`.
+- `plugins` replaces oxlint's defaults, so the defaults are restated there — do not drop one
+  while adding another.
+- A new `src/` directory gets its `no-restricted-imports` override (see the architecture rule).
+
+## The oxlint plugin
+
+`packages/openapi-to-trpc/lint/custom.js` is hono-takibi's plugin, as is: the Effect program
+shape, function declarations, predicate and type naming. It is an oxlint JS plugin: untyped
+ESTree in, a default export out. A change to it is better made in hono-takibi first and copied
+here, so the two stay one standard. When a rule is added:
+
+- Report a message that tells the author what to write instead, in the voice of the existing
+  rules — a sentence, not a rule name.
+- Exempt `*.test.ts` when the rule describes the shape of `src` rather than a real hazard.
+- Add it to the header comment in `custom.js` and to `rules` in `vite.config.ts`.
+
+## Formatting and the other linters
+
+- Formatting options live **only** in the root `vite.config.ts` (`fmt`); every workspace
+  inherits them. Do not add `fmt.ignorePatterns` there — they are inherited too. The same style
+  is duplicated in `emit` in `src/core/index.ts`, because generated code is formatted at
+  runtime; change both together.
+- `cspell.config.yaml`, `.textlintrc.yml` and `.markdownlint-cli2.jsonc` explain themselves in
+  comments; the docs rule says how to live with them.
+
+## Dependencies
+
+- `pnpm-lock.yaml` is written by pnpm. Never edit it by hand, and never delete it to "fix" an
+  install. CI installs with `--frozen-lockfile`.
+- **`effect` and `@effect/platform-node` share one caret range (`^4.0.0-rc.112`) and move
+  together.** `@effect/platform-node` depends on `@effect/platform-node-shared` with a caret
+  range, which floats to the newest release candidate, and each one peers the matching
+  `effect`. Pinning `effect` exactly (as hono-takibi does) therefore lets a fresh install combine
+  two rcs — it did here: `@effect/platform-node-shared` rc.114 next to `effect` rc.112 failed with
+  `Cannot find module .../effect/dist/ByteSize.js`. With both on a caret range the resolver
+  picks one matching set. Every release candidate also renames APIs (`Argument.file` became
+  `Argument.File`), so a bump is a change of its own — see the playbook.
+- pnpm holds a release back for a day (`minimumReleaseAge`). When it would let only part of an
+  Effect set through, the newest set is listed together under `minimumReleaseAgeExclude` in
+  `pnpm-workspace.yaml`, as `oas-truth@0.0.3` is.
+- `@apidevtools/swagger-parser`, `@typespec/compiler` and `@typespec/openapi3` are peers of
+  oas-truth, which npm and pnpm install automatically. Nothing here imports them, so they are not
+  dependencies of the package.
+- The package's runtime `dependencies` are what every user installs. Adding one is a design
+  decision — ask first. Tooling goes in `devDependencies` of the workspace that uses it; the
+  repository-wide linters are root `devDependencies`, pinned exactly.
+- Renovate (`renovate.json`, the same settings as asphodelos) opens update PRs on Saturdays,
+  after a release has been out for 7 days (1 day for a security fix). The `effect` group keeps
+  the Effect packages in one PR, `prose linters` the documentation toolchain.
+
+## The published package
+
+- `files: ["dist"]`, plus the `README.md` npm always includes. The README is a real file in
+  `packages/openapi-to-trpc` because npm leaves symlinks out; the root `README.md` is the
+  symlink. `LICENSE` lives at the root only, as in hono-takibi and hekireki.
+- There are no lifecycle scripts: `npm publish` does not build, so the release workflow's
+  publish job builds right before it.
+- Installing the packed tarball with npm into an empty directory is the proof it works for a
+  user: `npm pack`, `npm install ./openapi-to-trpc-<version>.tgz`, then run the CLI. Do it after
+  any change to `package.json`, `pack` in `vite.config.ts`, the dependencies or the entry points.
+
+## Releasing
+
+Releases are CI's job, and the `version` field of `packages/openapi-to-trpc/package.json` drives
+them. `release.yml` (hono-takibi's) runs after Test passes on a push to `main` and, from the exact
+commit Test ran on:
+
+1. **check** — reads the version and asks npm whether it is published;
+2. **tag** — creates `v<version>` on that commit, or verifies it is already there;
+3. **publish** — only when npm does not have the version: build, then
+   `pnpm -F openapi-to-trpc publish` with npm provenance (environment `release`,
+   `id-token: write`);
+4. **release** — creates the GitHub release for the tag with generated notes.
+
+- **To release, bump `version` in its own commit whose subject is the version (`0.1.0`), with
+  `pnpm check` and `pnpm test` green, and push to `main`.** Nothing else publishes.
+- **Never publish by hand, and never create or move a `v*` tag by hand.** Never reuse or roll
+  back a published version; to fix a release, bump again.
+- If publish fails (an npm outage, a missing trusted publisher), fix the cause and re-run the
+  failed jobs; the tag already points at the right commit.
+- The npm side is configured once, on the package's access page: a trusted publisher for this
+  repository, workflow `release.yml`, environment `release`.

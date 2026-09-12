@@ -1,0 +1,79 @@
+---
+description: src layering, dependency direction, per-directory responsibilities and the public API
+globs: packages/openapi-to-trpc/src/**/*.ts
+alwaysApply: false
+---
+
+# Layering
+
+Dependencies run **one way**. The order is enforced by the `no-restricted-imports` overrides in
+the `lint` block of `packages/openapi-to-trpc/vite.config.ts`, each carrying a message that says
+what the directory may import:
+
+```text
+layer 0  config  merge            (leaves: nothing internal)
+layer 0  generator                (pure: imports only its own modules, no node:fs)
+layer 1  core -> config, generator, merge
+layer 2  cli -> config, core      (both loaded lazily, through import())
+entry    src/index.ts -> cli
+```
+
+Wanting to reach an upper layer means the design is wrong — pass the value in as an argument, or
+move the shared code down a layer. A new edge is a change to the overrides first, and to the code
+second. A new `src/` directory gets its own override.
+
+## Responsibilities
+
+| Directory | Owns | Never does |
+| --- | --- | --- |
+| `config/` | the config schema, `defineConfig`, `parseConfig`, `readConfig`, `ConfigError` | import anything internal |
+| `generator/` | code builders: `schemas.ts` (component schemas), `components.ts` (every component kind, imports), `router.ts` (procedures, routers, `appRouter`, router types), `library.ts` (what each validator library needs on top of oas-truth) — string in, string out | touch the filesystem or run an Effect |
+| `merge/` | `mergeRouter`: a regenerated router merged into what the user already wrote | know about OpenAPI |
+| `core/` | `makeFiles` (config + document → every file, pure) and `openapiToTrpc` (the Effect program: parse, build, merge, format, write) | parse the command line |
+| `cli/` | the `openapi-to-trpc` command on `effect/unstable/cli` | generator logic |
+
+## What comes from oas-truth
+
+`parseOpenAPI`, `makeAdapter` (the zod / valibot / arktype / effect expression builders), the
+`make*Code` generators for every non-schema component kind and the naming helpers
+(`toIdentifierPascalCase`, `schemaRefToName`, `makeSafeKey`, `isRecord`) are imported from
+`oas-truth`. Do not reimplement them here: a gap in them is fixed in oas-truth, or worked around
+in `generator/library.ts` with a comment saying why. `schema-to-library` is oas-truth's
+dependency, not this package's.
+
+## Output that holds the user's code
+
+Router files (`<output>/<resource>.ts`) are read back and merged: the router object and the
+imports of every module the generator imports are regenerated; each surviving procedure's
+resolver, the user's other imports and any other code in the file (a customized `initTRPC`,
+helpers) are kept.
+
+- Never delete, empty or blindly overwrite a router file — not in a cleanup, not on a config
+  change.
+- A change to what a router file looks like must keep `mergeRouter` able to find the router
+  object and the resolvers; add a merge test when the emitted structure changes.
+
+Every other output (`<output>/index.ts`, the components, the router types) is the generator's
+and is rewritten wholesale.
+
+## The generated code
+
+- It must type-check under `strict`, `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`
+  for every validator library, and run: `test/` proves both for every library and layout.
+- A resolver starts as a stub that throws `TRPCError` `NOT_IMPLEMENTED`, so a declared `.output()`
+  still type-checks before the user implements it.
+- A construct a library cannot express fails generation with a message that names it (arktype and
+  recursive schemas) rather than emitting code that breaks at runtime.
+
+## Public API
+
+What users can import is exactly the `exports` map of `packages/openapi-to-trpc/package.json`:
+
+- `openapi-to-trpc/config` → `src/config/index.ts` (`defineConfig` and the config types)
+- the `openapi-to-trpc` bin → `dist/cli.js`, built from `src/index.ts`
+
+`pack.entry` in `packages/openapi-to-trpc/vite.config.ts` has one entry per output; adding a
+subpath means adding it in both places. The config schema and the CLI flags are public too:
+changing them updates `packages/openapi-to-trpc/README.md` (`CLI Reference`,
+`Full Config Reference`) in the same change. Do not introduce a breaking change on your own
+initiative — say what it would take and ask.

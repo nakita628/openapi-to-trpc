@@ -1,0 +1,75 @@
+---
+description: How Effect programs are written in the package, as enforced by the custom oxlint plugin
+globs: packages/openapi-to-trpc/src/**/*.ts
+alwaysApply: false
+---
+
+# Effect
+
+The CLI, the config and the core program are written on Effect v4 (release candidates, see the
+CI rule for how the version moves). The shapes below are enforced by
+`packages/openapi-to-trpc/lint/custom.js` — hono-takibi's plugin, as is; each rule's message says
+what to write instead. `src/generator` and `src/merge` are plain functions and stay that way.
+
+## One shape for an Effect program
+
+```ts
+export function readThing(input: string) {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const text = yield* fs.readFileString(input)
+    if (text === '') return yield* new GenerateError({ message: `${input} is empty` })
+    return text
+  })
+}
+```
+
+- An Effect program is the **return value of a named `function`**, written as
+  `return Effect.gen(function* () { ... })` — optionally followed by `.pipe(...)` for scoping or
+  recovery (`custom/effect-gen-return`). Never a const-bound arrow, never an inline argument.
+  When a helper needs a nested program, extract it into its own function.
+- No `Effect.fn` / `Effect.fnUntraced` (`custom/no-effect-fn`).
+- No `Effect.flatMap` / `Effect.andThen` (`custom/no-effect-flatmap`): write straight-line
+  `yield*` steps with early-return guards. `Effect.map` / `Effect.mapError` in a pipe are fine.
+- **Run an Effect only at a boundary** (`custom/no-effect-run`): `src/index.ts` runs the CLI
+  through `NodeRuntime.runMain`, and tests may run one. Everywhere else an Effect is returned, so
+  its requirements stay visible to the caller.
+- `Effect.promise` only wraps a dynamic `import()` (`custom/effect-promise-import`) — the CLI's
+  lazy load of `config` and `core`. Anything that can reject goes through `Effect.tryPromise`
+  with a `catch` that maps to a typed error.
+- A program whose error branch returns must return on every path: end with
+  `return yield* ...` (`consistent-return`).
+
+## Errors
+
+- Failures are tagged errors: `ConfigError` (`src/config`) as `Schema.TaggedError` because it
+  comes out of a schema decode, and carries `notFound` for a missing config file;
+  `GenerateError` (`src/core`) as `Data.TaggedError`. Filesystem failures stay the platform's
+  `PlatformError`.
+- Every error carries a `message` written for the person who ran the command: what is wrong and,
+  where possible, what to do. The CLI renders it as-is (`CliError.UserError`), and turns a
+  config that is missing and was never asked for into the help (`CliError.ShowHelp`).
+- `src/generator` is pure and has no error channel: a construct it cannot translate throws an
+  `Error` with the sentence to show, and `core` turns it into a `GenerateError` through
+  `Effect.try`. No other code throws.
+- Absorb only the failure you mean: `Effect.catchTag('PlatformError', ...)` for "the file is not
+  there yet" (the router merge, the config lookup), not a blanket `orElse`.
+
+## Services
+
+- The filesystem is `FileSystem.FileSystem`, provided once at the boundary:
+  `NodeServices.layer` in `src/index.ts`, and in the tests.
+- The CLI prints through Effect's `Console`, never `console` (`no-console`); the tests replace
+  `Console` with a recorder to read what the command printed.
+
+## Configuration schemas
+
+- Config validation is `effect/Schema` in `src/config`. A new option is a schema field with its
+  default as `Schema.withDecodingDefault`, an `annotate({ title, description, examples })`, and a
+  check whose message names what is wrong. A rule across fields is a `Schema.makeFilter` on the
+  struct that owns both fields.
+- Keep `defineConfig`'s input type (`ConfigSchema.Encoded`) accurate: it is what users get
+  completion and errors from while they type.
+- `effect/unstable/cli` owns parsing, `--help`, `--version` and completions. `<input>` is
+  decoded through a schema (`Argument.withSchema`) and `--schema` through `Flag.Literals`, so a
+  wrong value is reported by the parser, with the help.

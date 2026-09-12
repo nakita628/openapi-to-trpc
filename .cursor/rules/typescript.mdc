@@ -1,0 +1,79 @@
+---
+description: TypeScript conventions implied by the oxlint configuration
+globs: **/*.ts
+alwaysApply: false
+---
+
+# TypeScript conventions
+
+The source of truth is the `lint` block of `packages/openapi-to-trpc/vite.config.ts` (its rule
+list mirrors hono-takibi's, minus the Effect-specific parts that do not apply). What follows is
+what cannot be worked around. `*.test.ts` relaxes some of it — see the testing rule.
+Effect-specific shapes are in the Effect rule.
+
+## Functions and declarations
+
+- A module-level function is a **`function` declaration**. `const f = () => {}` is reported by
+  `custom/function-declaration` and `func-style` (an annotated const keeps its contextual type
+  and is allowed, as `LIBRARIES` and `MAKERS` are). Closures inside a function may be arrows.
+- A pure boolean predicate reads as a question: **`is*` / `has*` / `can*`**
+  (`custom/predicate-is-name`).
+- A `type` alias is **PascalCase** (`custom/type-pascal-case`).
+- Initialize at the declaration (`init-declarations`). No reassigning or writing through a
+  parameter (`no-param-reassign` with `props: true`), no `++` (`no-plusplus`; use `+= 1`).
+- No `await` inside a loop (`no-await-in-loop`): run independent work together
+  (`Effect.all(..., { concurrency: 'unbounded' })`).
+- No spread inside a `map` callback that rebuilds each element (`oxc/no-map-spread`): build the
+  value in a named function instead.
+
+## Types
+
+- **`type X = {...}` only — no `interface`** (`consistent-type-definitions: 'type'`).
+- **No `any`**, **no `!` non-null assertion**, **no type assertions at all**
+  (`consistent-type-assertions` with `assertionStyle: 'never'`). Narrow with a guard: `in`, a
+  local `is*` function, or `isRecord` from oas-truth.
+- Every `unsafe-*` rule is an error. `Object.entries` over an oas-truth map can come back as
+  `any`: give it the element type (`Object.entries<PathItem>(...)`) or iterate the keys.
+- Type imports are `import type`, in their own statement (`consistent-type-imports`,
+  `import/consistent-type-specifier-style`).
+- `noUncheckedIndexedAccess: true` — an indexed access includes `undefined`. Handle it with a
+  guard or `??`, not an assertion.
+- `@ts-ignore` is banned; `@ts-expect-error` needs a description.
+
+## Imports and exports
+
+- **A relative specifier always carries its `.js` extension** (`import/extensions: always`). The
+  package resolves NodeNext-style at runtime and `tsc` does not check it. The generated code is
+  the exception: it targets bundler resolution and imports extensionless specifiers.
+- **No default exports** (`import/no-default-export`), except where a tool requires one: a
+  `vite.config.ts` and the Vitest global setup carry a suppression comment that says so, and the
+  lint plugin has a scoped override.
+- Respect the layering in the architecture rule; `no-restricted-imports` reports a wrong edge.
+- ESM only: no `require`, no CommonJS. Node built-ins use the `node:` prefix.
+
+## Errors and async
+
+- Fail through the Effect error channel (see the Effect rule). The one throw in `src` is the pure
+  generator's, turned into a `GenerateError` by `core`.
+- A catch binding is named **`error`** (`unicorn/catch-error-name`).
+- No floating promises. A deliberate fire-and-forget is `void promise`.
+
+## Details
+
+- `console` is banned in `src` (`no-console`); the CLI prints through Effect's `Console`.
+- Regular expressions carry the `u` flag (`require-unicode-regexp`), in literals and in
+  `new RegExp(source, 'u')`. Under `u` a needless escape is a syntax error, so escape only what
+  must be.
+- Template literals over concatenation. A `${...}` inside a single-quoted string is rejected
+  (`no-template-curly-in-string`) — a real hazard in a code generator, so the generated source
+  is always built with template literals.
+- No leading-underscore identifiers, except Effect's `_tag`.
+- Do not hand-format. oxfmt (`vp fmt`, `pnpm fix`) owns layout and import order. The same style
+  (printWidth 100, single quotes, no semicolons) is duplicated in `emit` in `src/core/index.ts`,
+  because generated code is formatted at runtime; change both together.
+
+## TSDoc
+
+- Doc comments are TSDoc. **The type lives in the signature, never in the comment.**
+- No `@param` / `@returns` boilerplate. The house style is prose over a self-describing
+  signature that says *why*, not what the code already shows.

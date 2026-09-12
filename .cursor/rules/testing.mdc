@@ -1,0 +1,71 @@
+---
+description: Test conventions for Vitest (through vite-plus), the package suite and the integration suite under test/
+globs: **/*.test.ts,test/**
+alwaysApply: false
+---
+
+# Tests
+
+Tests run on **Vitest through vite-plus** and live next to what they cover
+(`src/cli/index.test.ts`). The package suite is configured in the `test` block of
+`packages/openapi-to-trpc/vite.config.ts`, the integration suite in `test/vite.config.ts`;
+`pnpm test` runs both.
+
+## Shape
+
+- Import from `vite-plus/test`: `import { describe, expect, it } from 'vite-plus/test'`.
+- `it`, never `test` (`vitest/consistent-test-it`). Titles describe the behavior in a sentence.
+- A table is **`it.each`**, never a loop around `it` (`vitest/prefer-each`).
+- **`toStrictEqual` over `toEqual`** (`vitest/prefer-strict-equal`): `toEqual` ignores
+  `undefined` properties and would let a codegen regression through. An equality matcher over
+  `toBe(true)` on a comparison.
+- `it.only`, `it.skip` and commented-out tests fail lint (`vitest/no-focused-tests`,
+  `vitest/no-disabled-tests`, `vitest/no-commented-out-tests`).
+- The package suite loads the OpenAPI parser, the TypeSpec compiler and ts-morph and writes real
+  files, so its timeout is 30s (60s for `test/`, which also runs `tsc`): on a loaded machine the
+  5s default is contention, not a hung test. Do not lower it.
+
+## What tests may do that `src` may not
+
+`*.test.ts` is exempt from the structural rules and the cast rules: `let`, `any`, type
+assertions, arrow functions at module scope and cross-layer imports are fine when they spell the
+fixture out most clearly. Two more are specific to this repository:
+
+- **Tests run Effects directly** (`custom/no-effect-run` exempts them): provide
+  `NodeServices.layer` and `Effect.runPromise`, or `Effect.runSync` for a pure decode. For a
+  failure, `Effect.flip` and assert the tagged error (`{ _tag: 'ConfigError', message }`).
+- Test files sit outside `tsconfig.json`, so type-aware lint sees a default lib without
+  `toSorted`. `.sort()` on a fresh array is allowed there (`unicorn/no-array-sort` is off for
+  tests only).
+
+## Working with the filesystem
+
+- A test that writes files creates its own directory (`mkdtempSync` under `os.tmpdir()`) and
+  removes it afterwards (`afterEach` in the CLI suite). Pass absolute paths in the config or on
+  the command line rather than changing the working directory.
+- Assert through the observable result — files on disk, the generated source, the CLI's
+  recorded output — rather than internals.
+- A bug fix ships with a test that fails before it and passes after. When you add a guard, prove
+  the test catches its absence (remove the guard, watch it fail, restore it).
+
+## The CLI suite
+
+- `runCli(argv)` in `src/cli/index.test.ts` runs the command the way the entry does and records
+  stdout and stderr through a replaced `Console`, with the ANSI escapes stripped.
+- The CLI Reference block in `packages/openapi-to-trpc/README.md` is compared with `--help`;
+  after changing a flag or an example, paste the new `--help` output into the README.
+- The generator pipeline is loaded lazily; a test reads the CLI source to keep `config` and
+  `core` out of its static imports.
+
+## The integration suite (`test/`)
+
+- `setup.ts` (Vitest `globalSetup`) generates `test/specs/openapi.yaml` for every validator
+  library, each with a different component layout, and `test/specs/recursive.yaml` for the
+  libraries that support recursive schemas, into `test/__generated__/`.
+- It has to run first: Vite resolves a template-literal `import()` against the files that exist
+  when the test file loads.
+- `generate.test.ts` calls the generated routers through a tRPC caller (validation and the
+  `NOT_IMPLEMENTED` stub) and runs `tsc` over everything generated.
+- `__generated__/` is output: gitignored, refreshed every run, never edited or committed.
+- A change to generated output is proven here for every library, not only zod: add the construct
+  to a spec under `test/specs/` when it is new.

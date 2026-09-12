@@ -1,0 +1,114 @@
+---
+description: Repository map, commands, invariants and the definition of done (always applied)
+alwaysApply: true
+---
+
+# openapi-to-trpc — how this repository is run
+
+Generates type-safe [tRPC](https://trpc.io/) routers — one router per resource, component
+schemas in zod, valibot, arktype or Effect Schema, and `RouterInputs` / `RouterOutputs` — from
+OpenAPI or TypeSpec. Published to npm as `openapi-to-trpc`, with a CLI. The OpenAPI / TypeSpec
+parser, the validator adapters and the non-schema component generators come from
+[oas-truth](https://www.npmjs.com/package/oas-truth); what lives here is tRPC-specific. Built on
+Effect v4, formatted by oxfmt, linted by oxlint, tested with Vitest, all through vite-plus (`vp`)
+and pnpm. It follows the conventions of `nakita628/hono-takibi` and `nakita628/hekireki`.
+
+The config files are the source of truth: when an instruction contradicts one, quote the config
+and ask before changing it.
+
+Everything committed is written in **English** — code, comments, TSDoc, Markdown, commit
+messages, workflow comments. textlint and cspell assume it. Test data may be in any language.
+
+## Layout
+
+```text
+packages/openapi-to-trpc/     the published package (the only npm artifact)
+  src/                        implementation; see the architecture rule for the layering
+  lint/custom.js              oxlint JS plugin holding the structural conventions (hono-takibi's)
+  vite.config.ts              pack (build), test and lint — the lint block is the design
+  README.md                   the user documentation; the root README.md is a symlink to it
+test/                         integration suite: generates every library, runs tsc, calls routers
+  specs/                      the OpenAPI documents the suite generates from
+  setup.ts                    Vitest global setup: writes __generated__ before the suite runs
+  vite.config.ts              the suite's own test and lint configuration
+scripts/actionlint.ts         downloads a pinned actionlint, verifies its checksum, runs it
+scripts/zizmor.ts             downloads a pinned zizmor (workflow security audit), verifies it, runs it
+vite.config.ts                formatting only (printWidth 100, single quotes, no semicolons);
+                              every workspace inherits it
+renovate.json                 dependency updates (Saturdays, Asia/Tokyo); see the CI rule
+.github/workflows/test.yml    CI (Test): build, both test suites, then `vp run check`
+.github/workflows/lint.yml    CI (Lint): `vp run lint`
+.github/workflows/release.yml after Test on main: tag, npm publish, GitHub release
+```
+
+## Commands
+
+Run these from the repository root.
+
+| Goal | Command |
+| --- | --- |
+| Install dependencies | `pnpm install --frozen-lockfile` |
+| Everything CI checks (format, oxlint and type checks, then every linter) | `pnpm check` |
+| Autofix formatting, oxlint, markdownlint and textlint | `pnpm fix` |
+| Linters (markdownlint, textlint, cspell, secretlint, actionlint, zizmor) | `pnpm lint` |
+| Both test suites (package, then `test/`) | `pnpm test` |
+| Build `dist` | `pnpm build` |
+| One test file | `pnpm --filter ./packages/openapi-to-trpc exec vp test src/<path>.test.ts` |
+
+- `pnpm check` runs `vp check` in every workspace: oxfmt, oxlint with type-aware rules, and the
+  TypeScript type check (`typeCheck: true`). Its summary line says "no warnings or lint errors"
+  even though it also type-checks.
+- The `test/` suite imports the package source directly, so it needs no build. Its global setup
+  regenerates `test/__generated__` on every run.
+- `scripts/*.ts` run on Node's own TypeScript support, so they need Node 24 (CI uses it).
+
+## Definition of done
+
+Before reporting a task finished, **`pnpm check` and `pnpm test` must be green**. One failure
+means not done. If you only ran part of it, say which part.
+
+- A behavior change ships with a test that fails before it and passes after.
+- A change to the config, the CLI or the generated output updates
+  `packages/openapi-to-trpc/README.md` in the same change. The CLI Reference block there is
+  `openapi-to-trpc --help` verbatim, and `src/cli/index.test.ts` fails when they differ.
+- Report results as they are. Never call a task complete while hiding a failing command, and
+  never make a check pass by weakening it.
+
+## Invariants
+
+- **Never relax a linter to get a change through.** Do not set a rule to `'off'`, do not lower
+  `categories`, do not drop `denyWarnings`, do not add an `ignorePatterns` / `ignorePaths` entry
+  to hide a finding. If a rule genuinely does not fit, say so and ask.
+- **Suppressions live next to the code, naming the rule and the reason:**
+  `// oxlint-disable-next-line rule-name -- reason`. Never disable a whole file.
+  `reportUnusedDisableDirectives: 'deny'` is on, so a suppression that stopped firing must go.
+- **No `TODO` / `FIXME`.** `no-warning-comments` rejects them in source, textlint's `no-todo` in
+  docs. Parked work belongs in the report.
+- **Failures are typed Effect errors**: `ConfigError`, `GenerateError`, `PlatformError`. See the
+  Effect rule.
+- **Never hand-edit generated files:** `pnpm-lock.yaml` (let pnpm write it), `dist/`,
+  `test/__generated__/`.
+- **Router files hold the user's code.** A regenerated router is merged into what is on disk
+  (`src/merge`); nothing may delete or blindly overwrite it.
+- **`effect` and `@effect/platform-node` move together**, in one change. See the CI rule.
+- **Never bump `version` in `packages/openapi-to-trpc/package.json`** unless the task is a
+  release that was asked for: pushing a new version to `main` is what publishes it. Never
+  `npm publish`, `pnpm publish` or push a `v*` tag by hand.
+
+## Working order
+
+1. Read the rules in force for the files you are about to touch (`lint` in the workspace's
+   `vite.config.ts`, and the matching `.cursor/rules/*.mdc`).
+2. Implement it the way the surrounding code is written. Do not introduce a second idiom.
+3. `pnpm fix`, then `pnpm check` and `pnpm test`.
+4. Commit when asked (see Git policy).
+5. In the final report state what changed, which commands verified it, and anything left out.
+
+## Git policy
+
+- Commit when the owner asks. Never force-push and never rewrite pushed history. Push to `main`
+  only when asked: a push to `main` is what runs the release workflow.
+- One logical change per commit. The subject is an imperative sentence in the shape of the
+  existing history (`Add Test, Lint and release workflows`), with no `feat:` / `fix:` prefix;
+  the body explains why. A version bump is its own commit, subject the version.
+- Do not commit generated output, secrets or local tooling files.

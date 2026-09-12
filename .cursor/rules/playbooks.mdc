@@ -1,0 +1,104 @@
+---
+description: Step-by-step playbooks for the recurring tasks here — adding a config option, supporting an OpenAPI construct in the routers, fixing a generator bug, porting a feature from hono-takibi, clearing a lint failure, adding a lint rule, bumping effect or oas-truth, and releasing. Read this when starting any of those.
+alwaysApply: false
+---
+
+# Playbooks
+
+Every playbook ends the same way: `pnpm fix`, then `pnpm check` and `pnpm test`, all green, then
+commit when asked.
+
+## Add a config option
+
+1. Write the failing test first: `src/config/index.test.ts` for validation, and
+   `src/core/index.test.ts` or `src/cli/index.test.ts` for what it changes.
+2. Add the field to `ConfigSchema` in `src/config/index.ts`, with its default as
+   `Schema.withDecodingDefault`, an `annotate({ title, description, examples })`, and a check
+   whose message names the field. A rule across fields is a `Schema.makeFilter`.
+3. Thread it through `makeFiles` in `src/core/index.ts` into the pure builders in `generator/`,
+   respecting the layering.
+4. If it should be reachable without a config file, add the flag to `commandLine` in
+   `src/cli/index.ts` and paste the new `--help` into the README.
+5. Document it in `packages/openapi-to-trpc/README.md` (`Full Config Reference`).
+
+## Support an OpenAPI construct in the routers
+
+1. Add the construct to a spec under `test/specs/` (or a new one) so every library generates it.
+2. Build it in `src/generator/router.ts` as a JSON Schema handed to the oas-truth adapter, not as
+   library-specific code: the adapter writes zod, valibot, arktype and Effect Schema from it.
+3. Only what the adapter leaves to the host goes in `src/generator/library.ts` (the Standard
+   Schema wrapper, recursion, the import probe), per library.
+4. `pnpm test` proves the result type-checks with `tsc` and validates at runtime for every
+   library. Add a runtime assertion to `test/generate.test.ts` when the behavior is new.
+
+## Fix a generator bug
+
+1. Reproduce it as a failing test at the smallest document that shows it. Prefer asserting the
+   behavior of the generated code (`test/generate.test.ts` calls the routers through a tRPC
+   caller) over string matching.
+2. Find the layer that owns the mistake — oas-truth (parsing, the adapters, the component
+   generators), a builder in `generator/`, the merge, or the program in `core/` — and fix it
+   there, not downstream. A bug in oas-truth is reported or fixed there.
+3. Check whether the other validator libraries and component layouts have the same mistake.
+
+## Port a feature from hono-takibi
+
+1. Read the hono-takibi implementation and its tests end to end before writing anything.
+2. List what differs here: tRPC instead of Hono, router files that merge into the user's code,
+   oas-truth doing the parsing and the adapters. Adapt; do not copy a behavior that would delete
+   or overwrite user code.
+3. Port the tests first and make sure the new ones fail against the current code before the
+   implementation lands.
+4. Say in the commit body what was taken as-is and what was changed and why.
+
+## Clear a lint failure
+
+1. Run the failing command and read the rule name in the message.
+2. Try `pnpm fix` first — formatting, import order, markdownlint and textlint are autofixable.
+3. Otherwise **change the code, not the rule.** The rules encode the design: no assertion means
+   narrow with a guard; a `no-restricted-imports` message means the dependency direction is
+   wrong; `prefer-each` means `it.each`; `no-await-in-loop` means run the work together.
+4. Only if the rule genuinely cannot hold, add
+   `// oxlint-disable-next-line rule-name -- reason` on that line, and say in the report that you
+   added a suppression and why.
+5. An unknown word is one line in `project-words.txt` if it is a real project term, a file-local
+   `cspell:ignore` if it is test data, and a rename if it is an abbreviation or a typo.
+
+## Add a lint rule
+
+1. Check its category; correctness / suspicious / perf are already on.
+2. Add it to the `lint` block of `packages/openapi-to-trpc/vite.config.ts` in its section, with
+   the reason.
+3. Run `pnpm check` and fix every finding in the code.
+4. For a `custom/` rule, follow the plugin section of the CI and configuration rule.
+
+## Bump effect
+
+1. Update `effect` and `@effect/platform-node` together (`pnpm up -r effect @effect/platform-node
+   @effect/platform-node-shared`), then put both specs back to one caret range — `pnpm up`
+   rewrites them to exact versions.
+2. If pnpm's release-age gate holds back part of the set, list the whole set under
+   `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` rather than mixing two rcs.
+3. `pnpm check`. Release candidates rename Schema and CLI APIs, so expect errors in `config/` and
+   `cli/` first; `--help` output may change too (paste it into the README).
+4. `pnpm test`, then install the packed tarball with npm and run the CLI.
+5. Report which upstream changes forced code changes; that is what the commit body explains.
+
+## Bump oas-truth
+
+1. Read its changelog and its type declarations: a new export may replace code here.
+2. Update it, then `pnpm check` and `pnpm test`. The integration suite shows any change in the
+   generated code for every library; read the difference rather than adjusting an assertion.
+3. Remove what oas-truth now provides, and the tests that only covered it.
+
+## Release (only when asked)
+
+1. Confirm `main` is green.
+2. Bump `version` in `packages/openapi-to-trpc/package.json` only (semver: a breaking change to
+   the config, the CLI or the generated output is a minor bump while the version is `0.x`).
+3. `pnpm check` and `pnpm test`, then commit with the version as the subject (`0.1.0`) and push to
+   `main`.
+4. Watch Test, then `release`: it tags `v<version>`, publishes to npm and creates the GitHub
+   release from that commit. Never publish or tag by hand.
+5. If a job fails, fix the cause and re-run the failed jobs. To fix a published release, bump
+   again — never reuse a version.
