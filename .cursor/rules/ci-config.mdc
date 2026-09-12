@@ -99,9 +99,16 @@ here, so the two stay one standard. When a rule is added:
 - The package's runtime `dependencies` are what every user installs. Adding one is a design
   decision — ask first. Tooling goes in `devDependencies` of the workspace that uses it; the
   repository-wide linters are root `devDependencies`, pinned exactly.
-- Renovate (`renovate.json`, the same settings as asphodelos) opens update PRs on Saturdays,
-  after a release has been out for 7 days (1 day for a security fix). The `effect` group keeps
-  the Effect packages in one PR, `prose linters` the documentation toolchain.
+- Renovate (`renovate.json`) opens update PRs on Saturdays (Asia/Tokyo), after a release has
+  been out for 7 days (1 day for a security fix), and refreshes the lockfile on the same day.
+  The `effect` group keeps the Effect packages in one PR, `prose linters` the documentation
+  toolchain.
+- Renovate merges pins, the lockfile refresh and minor or patch updates of dependencies at 1.0
+  or later on its own once CI passes. Majors, `0.x` dependencies (`oas-truth`, `oxfmt`,
+  `vite-plus`) and a new digest under an unchanged action tag wait for a review. So does the
+  `effect` group: Renovate calls an rc bump a patch, but every rc renames APIs, so that PR is
+  finished by hand with the Bump effect playbook. The rule excluding it sits last in
+  `packageRules`, because a later rule overrides an earlier one.
 
 ## The published package
 

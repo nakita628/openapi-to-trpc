@@ -4,7 +4,6 @@
 apidevtools
 arktype
 artipacked
-asphodelos
 bsdtar
 codegen
 extensionless

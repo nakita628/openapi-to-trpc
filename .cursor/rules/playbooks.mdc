@@ -74,6 +74,9 @@ commit when asked.
 
 ## Bump effect
 
+Renovate's `effect` PR is never merged automatically, and it only rewrites the lockfile. Check
+out its branch and follow the same steps.
+
 1. Update `effect` and `@effect/platform-node` together (`pnpm up -r effect @effect/platform-node
    @effect/platform-node-shared`), then put both specs back to one caret range — `pnpm up`
    rewrites them to exact versions.

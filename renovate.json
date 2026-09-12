@@ -54,6 +54,11 @@
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["digest"],
       "automerge": false
+    },
+    {
+      "description": "Renovate calls an Effect release candidate bump (rc.115 to rc.120) a patch, so the rule above would automerge it. Every rc renames Schema and CLI APIs and can change --help, so the effect PR waits for the Bump effect playbook in .cursor/rules/playbooks.mdc.",
+      "matchPackageNames": ["effect", "@effect/**"],
+      "automerge": false
     }
   ]
 }
