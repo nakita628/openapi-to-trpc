@@ -127,7 +127,7 @@ export const appRouter = t.router({ users: usersRouter })
 - `GET` becomes a `query`, every other method a `mutation`; the procedure is named `<method><Path>` (`getUsersUserId`).
 - The input merges path and query parameters with the JSON request body. An object body is flattened next to the parameters; any other body goes under `body`. Header and cookie parameters are left to your tRPC context.
 - The output is the first `2xx` JSON response.
-- Each resolver starts as a `NOT_IMPLEMENTED` stub. Replace it with your implementation: on the next run, the router object and the generator's imports are regenerated, while your resolvers, your imports of other modules and any other code in the file (a customized `initTRPC`, helpers) are kept.
+- Each resolver starts as a `NOT_IMPLEMENTED` stub. Replace it with your implementation, and build the procedure on your own middleware (`authed.input(…)`) where you need it. On the next run only what the document owns is regenerated: each procedure's `.input()` / `.output()`, the generator's imports and a stub for each new operation; a procedure whose operation left the document is removed. Your resolvers, the procedures they build on, `.use()` / `.meta()`, comments, other entries of the router, your imports of other modules and any other code in the file (a customized `initTRPC`, helpers) are kept.
 
 ## CLI Reference
 

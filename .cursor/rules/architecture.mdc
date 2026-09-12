@@ -43,15 +43,18 @@ dependency, not this package's.
 
 ## Output that holds the user's code
 
-Router files (`<output>/<resource>.ts`) are read back and merged: the router object and the
-imports of every module the generator imports are regenerated; each surviving procedure's
-resolver, the user's other imports and any other code in the file (a customized `initTRPC`,
-helpers) are kept.
+Router files (`<output>/<resource>.ts`) are read back and edited in place, the way hono-takibi
+merges its handler files: each procedure's `.input()` / `.output()` and the imports of every
+module the generator imports are regenerated, a new operation gets a stub and a procedure whose
+operation left the document is removed. Everything else is the user's and kept — resolvers, the
+procedure a chain builds on (middleware), `.use()` / `.meta()`, comments, other router entries,
+other imports and code (a customized `initTRPC`, helpers).
 
 - Never delete, empty or blindly overwrite a router file — not in a cleanup, not on a config
   change.
 - A change to what a router file looks like must keep `mergeRouter` able to find the router
-  object and the resolvers; add a merge test when the emitted structure changes.
+  object, the resolvers and the `.input()` / `.output()` calls; add a merge test when the emitted
+  structure changes.
 
 Every other output (`<output>/index.ts`, the components, the router types) is the generator's
 and is rewritten wholesale.
