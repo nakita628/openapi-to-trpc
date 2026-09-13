@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import * as NodeServices from '@effect/platform-node/NodeServices'
 import { Console, Effect, Exit } from 'effect'
@@ -134,6 +135,35 @@ describe('openapi-to-trpc --config', () => {
       stderr: '',
     })
     expect(fs.existsSync(path.join(dir, 'types.ts'))).toBe(true)
+  })
+
+  it('runs a config file that calls defineConfig', async () => {
+    const dir = useTmpDir()
+    const config = path.join(dir, 'openapi-to-trpc.config.ts')
+    const input = path.join(SPECS, 'openapi.yaml')
+    const output = path.join(dir, 'routes')
+    const defineConfigHref = pathToFileURL(
+      path.resolve(import.meta.dirname, '../config/index.ts'),
+    ).href
+    fs.writeFileSync(
+      config,
+      `import { defineConfig } from '${defineConfigHref}'
+export default defineConfig({
+  input: ${JSON.stringify(input)},
+  schema: 'zod',
+  output: ${JSON.stringify(output)},
+})
+`,
+    )
+
+    const result = await runCli(['--config', config])
+
+    expect(result).toStrictEqual({
+      ok: true,
+      stdout: `openapi-to-trpc: ${input} (zod)`,
+      stderr: '',
+    })
+    expect(fs.existsSync(path.join(dir, 'routes/index.ts'))).toBe(true)
   })
 
   it('reports an invalid config', async () => {

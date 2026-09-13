@@ -29,7 +29,7 @@ Routers are written to `src/routes/`, component schemas to `src/components/index
 Create `openapi-to-trpc.config.ts`:
 
 ```ts
-import { defineConfig } from 'openapi-to-trpc/config'
+import { defineConfig } from 'openapi-to-trpc'
 
 export default defineConfig({
   input: 'openapi.yaml',
@@ -175,7 +175,7 @@ With an `<input>` the CLI generates from that document; without one it runs a co
 
 ```ts
 // openapi-to-trpc.config.ts
-import { defineConfig } from 'openapi-to-trpc/config'
+import { defineConfig } from 'openapi-to-trpc'
 
 export default defineConfig({
   // OpenAPI spec file (.yaml, .json, or .tsp)
