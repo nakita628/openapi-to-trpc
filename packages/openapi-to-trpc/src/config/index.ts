@@ -282,6 +282,10 @@ export function readConfig(configPath = 'openapi-to-trpc.config.ts') {
   })
 }
 
+/**
+ * Type-checks a config file's default export. The CLI validates the object when it loads the
+ * file; this helper is identity at runtime so editors see `ConfigSchema.Encoded` while you type.
+ */
 export function defineConfig(config: typeof ConfigSchema.Encoded) {
   return config
 }

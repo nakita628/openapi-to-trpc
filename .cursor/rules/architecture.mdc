@@ -72,7 +72,9 @@ and is rewritten wholesale.
 
 What users can import is exactly the `exports` map of `packages/openapi-to-trpc/package.json`:
 
-- `openapi-to-trpc/config` → `src/config/index.ts` (`defineConfig` and the config types)
+- `openapi-to-trpc` → `src/config/index.ts` (`defineConfig` and the config types)
+- `openapi-to-trpc/config` → the same module (kept so a config file that already imports the
+  subpath still resolves)
 - the `openapi-to-trpc` bin → `dist/cli.js`, built from `src/index.ts`
 
 `pack.entry` in `packages/openapi-to-trpc/vite.config.ts` has one entry per output; adding a

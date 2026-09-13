@@ -5,7 +5,7 @@ export default defineConfig({
   pack: {
     entry: {
       cli: './src/index.ts',
-      'config/index': './src/config/index.ts',
+      index: './src/config/index.ts',
     },
     dts: true,
     // tsdown defaults to `.mjs` / `.d.mts` for node; `bin` and `exports` point at `.js` / `.d.ts`.

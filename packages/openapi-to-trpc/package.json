@@ -1,6 +1,6 @@
 {
   "name": "openapi-to-trpc",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenAPI/TypeSpec to tRPC code generator",
   "keywords": [
     "codegen",
@@ -27,9 +27,13 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
     "./config": {
-      "types": "./dist/config/index.d.ts",
-      "import": "./dist/config/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
   "scripts": {

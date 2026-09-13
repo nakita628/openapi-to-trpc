@@ -1,7 +1,9 @@
+import fs from 'node:fs'
+
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { parseConfig } from './index.js'
+import { defineConfig, parseConfig } from './index.js'
 
 describe('parseConfig', () => {
   it('fills in defaults and normalizes component outputs to files', () => {
@@ -54,5 +56,37 @@ describe('parseConfig', () => {
       _tag: 'ConfigError',
       message: `Invalid config: ${message}`,
     })
+  })
+})
+
+describe('defineConfig', () => {
+  it('returns the config object as-is', () => {
+    const config = { input: 'openapi.yaml' as const }
+    expect(defineConfig(config)).toBe(config)
+  })
+})
+
+describe('package exports', () => {
+  it('exposes defineConfig from the package root and from /config', () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'),
+    ) as {
+      exports: { [key: string]: { import: string; types: string } }
+    }
+
+    expect(pkg.exports['.']).toStrictEqual({
+      types: './dist/index.d.ts',
+      import: './dist/index.js',
+    })
+    expect(pkg.exports['./config']).toStrictEqual({
+      types: './dist/index.d.ts',
+      import: './dist/index.js',
+    })
+  })
+
+  it('documents defineConfig as an import from the package root', () => {
+    const readme = fs.readFileSync(new URL('../../README.md', import.meta.url), 'utf-8')
+    expect(readme).toContain("import { defineConfig } from 'openapi-to-trpc'")
+    expect(readme).not.toContain("from 'openapi-to-trpc/config'")
   })
 })
