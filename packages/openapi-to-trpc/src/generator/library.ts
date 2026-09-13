@@ -1,3 +1,6 @@
+import { makeAdapter } from 'oas-truth'
+import type { ComponentAdapter } from 'oas-truth'
+
 export type Library = 'zod' | 'valibot' | 'arktype' | 'effect'
 
 /**
@@ -39,14 +42,32 @@ export const LIBRARIES: {
 }
 
 /**
- * Valibot's `v.optional` output includes `| undefined`. oas-truth's cyclic helper
- * type does not, so `exactOptionalPropertyTypes` rejects `v.GenericSchema<Helper>`.
- * Zod uses `.exactOptional()` and matches the helper; Effect annotates with `any`.
+ * oas-truth's Effect adapter annotates cycles as `Schema.Codec<any>`. That
+ * widens the const, so `export type X = Schema.Schema.Type<typeof X>` becomes
+ * `any` and tRPC `RouterOutputs` follow. Naming the helper type keeps the
+ * inferred export.
+ */
+export function hostAdapter(library: Library): ComponentAdapter {
+  const adapter = makeAdapter(library)
+  if (library !== 'effect') return adapter
+  return {
+    ...adapter,
+    cyclicAnnotation: (typeName) => `Schema.Codec<${typeName}>`,
+  }
+}
+
+/**
+ * Valibot's `v.optional` and Effect's `Schema.optional` include `| undefined`.
+ * oas-truth's cyclic helper type does not, so `exactOptionalPropertyTypes`
+ * rejects the annotation. Zod uses `.exactOptional()` and already matches.
+ * Effect arrays are also `readonly`; the helper type is not.
  */
 export function withExactOptionalPropertyTypes(library: Library, code: string) {
-  if (library !== 'valibot') return code
-  return code.replaceAll(/\?:([^;}\n]+)/gu, (match, type: string) => {
+  if (library !== 'valibot' && library !== 'effect') return code
+  const optionals = code.replaceAll(/\?:([^;}\n]+)/gu, (match, type: string) => {
     if (/\|\s*undefined$/u.test(type.trim())) return match
     return `?:${type.trimEnd()} | undefined`
   })
+  if (library !== 'effect') return optionals
+  return optionals.replaceAll(/(\?:)\s*(?!readonly )([^;}\n]*\[\])/gu, '?: readonly $2')
 }

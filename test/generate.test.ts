@@ -1,7 +1,10 @@
 import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vite-plus/test'
+
+import { OUT } from './setup.js'
 
 describe('generated routers', () => {
   it.each(['zod', 'valibot', 'arktype', 'effect'])(
@@ -27,6 +30,11 @@ describe('generated routers', () => {
       })
     },
   )
+
+  it('does not annotate effect recursive schemas as Codec<any>', () => {
+    const code = fs.readFileSync(path.join(OUT, 'recursive/effect/components.ts'), 'utf-8')
+    expect(code).not.toContain('Schema.Codec<any>')
+  })
 
   it('type-check with tsc', () => {
     const dir = import.meta.dirname

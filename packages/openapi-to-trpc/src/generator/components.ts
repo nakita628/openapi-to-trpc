@@ -1,5 +1,4 @@
 import {
-  makeAdapter,
   makeCallbacksCode,
   makeExamplesCode,
   makeHeadersCode,
@@ -14,7 +13,7 @@ import {
 } from 'oas-truth'
 import type { ComponentAdapter, Components, SchemaDeclaration } from 'oas-truth'
 
-import { LIBRARIES, withExactOptionalPropertyTypes } from './library.js'
+import { hostAdapter, LIBRARIES, withExactOptionalPropertyTypes } from './library.js'
 import type { Library } from './library.js'
 
 export const KINDS = [
@@ -72,9 +71,12 @@ export function makeContext(
   readonly: boolean,
   schemas: Components['schemas'],
 ): Context {
-  const adapter = makeAdapter(library)
+  const adapter = hostAdapter(library)
   const raw = makeSchemaDeclarations(schemas ?? {}, adapter, { exportTypes: true })
-  const declarations = library === 'valibot' ? raw.map(rewriteValibotDeclaration) : raw
+  const declarations =
+    library === 'valibot' || library === 'effect'
+      ? raw.map((declaration) => rewriteOptionalDeclaration(library, declaration))
+      : raw
   return {
     adapter,
     library,
@@ -84,12 +86,15 @@ export function makeContext(
   }
 }
 
-function rewriteValibotDeclaration(declaration: SchemaDeclaration): SchemaDeclaration {
+function rewriteOptionalDeclaration(
+  library: 'valibot' | 'effect',
+  declaration: SchemaDeclaration,
+): SchemaDeclaration {
   return {
     name: declaration.name,
     varName: declaration.varName,
     fileName: declaration.fileName,
-    code: withExactOptionalPropertyTypes('valibot', declaration.code),
+    code: withExactOptionalPropertyTypes(library, declaration.code),
   }
 }
 
