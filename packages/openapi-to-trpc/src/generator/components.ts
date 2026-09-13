@@ -1,4 +1,5 @@
 import {
+  makeAdapter,
   makeCallbacksCode,
   makeExamplesCode,
   makeHeadersCode,
@@ -13,7 +14,7 @@ import {
 } from 'oas-truth'
 import type { ComponentAdapter, Components, SchemaDeclaration } from 'oas-truth'
 
-import { hostAdapter, LIBRARIES, withExactOptionalPropertyTypes } from './library.js'
+import { LIBRARIES } from './library.js'
 import type { Library } from './library.js'
 
 export const KINDS = [
@@ -71,30 +72,14 @@ export function makeContext(
   readonly: boolean,
   schemas: Components['schemas'],
 ): Context {
-  const adapter = hostAdapter(library)
-  const raw = makeSchemaDeclarations(schemas ?? {}, adapter, { exportTypes: true })
-  const declarations =
-    library === 'valibot' || library === 'effect'
-      ? raw.map((declaration) => rewriteOptionalDeclaration(library, declaration))
-      : raw
+  const adapter = makeAdapter(library)
+  const declarations = makeSchemaDeclarations(schemas ?? {}, adapter, { exportTypes: true })
   return {
     adapter,
     library,
     readonly,
     schemaIds: new Set(declarations.map((declaration) => declaration.varName)),
     schemas: declarations,
-  }
-}
-
-function rewriteOptionalDeclaration(
-  library: 'valibot' | 'effect',
-  declaration: SchemaDeclaration,
-): SchemaDeclaration {
-  return {
-    name: declaration.name,
-    varName: declaration.varName,
-    fileName: declaration.fileName,
-    code: withExactOptionalPropertyTypes(library, declaration.code),
   }
 }
 
@@ -149,7 +134,7 @@ export function makeModule(
   return [
     ...header,
     ...(library.uses.test(body)
-      ? [library.importLine?.(body) ?? context.adapter.renderImport()]
+      ? [context.adapter.renderImport({ cyclic: /\bscope\(/u.test(body) })]
       : []),
     ...Array.from(
       Map.groupBy(refs, from),
