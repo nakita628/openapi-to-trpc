@@ -218,7 +218,7 @@ export default defineConfig({
 })
 ```
 
-Recursive schemas (self or mutual `$ref` cycles) are supported with `zod`, `valibot` and `effect`. `arktype` needs a `scope` for recursion, so generation stops with an error listing the recursive schemas.
+Recursive schemas (self or mutual `$ref` cycles) are supported for every validator library.
 
 ## Setting up the tRPC client
 

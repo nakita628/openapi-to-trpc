@@ -3,8 +3,6 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vite-plus/test'
 
-import { generate, OUT } from './setup.js'
-
 describe('generated routers', () => {
   it.each(['zod', 'valibot', 'arktype', 'effect'])(
     'validate at runtime with %s',
@@ -20,12 +18,15 @@ describe('generated routers', () => {
     },
   )
 
-  it.each(['zod', 'valibot', 'effect'])('load recursive schemas with %s', async (schema) => {
-    const { appRouter } = await import(`./__generated__/recursive/${schema}/routes/index.ts`)
-    await expect(appRouter.createCaller({}).categories.getCategories()).rejects.toMatchObject({
-      code: 'NOT_IMPLEMENTED',
-    })
-  })
+  it.each(['zod', 'valibot', 'arktype', 'effect'])(
+    'load recursive schemas with %s',
+    async (schema) => {
+      const { appRouter } = await import(`./__generated__/recursive/${schema}/routes/index.ts`)
+      await expect(appRouter.createCaller({}).categories.getCategories()).rejects.toMatchObject({
+        code: 'NOT_IMPLEMENTED',
+      })
+    },
+  )
 
   it('type-check with tsc', () => {
     const dir = import.meta.dirname
@@ -39,16 +40,5 @@ describe('generated routers', () => {
       }
     })()
     expect(output).toBe('')
-  })
-
-  it('reject recursive schemas with arktype', async () => {
-    const root = path.join(OUT, 'recursive', 'arktype')
-    await expect(
-      generate('recursive.yaml', 'arktype', root, { output: 'components.ts' }),
-    ).rejects.toMatchObject({
-      _tag: 'GenerateError',
-      message:
-        'arktype does not support recursive schemas: CommentSchema, CategorySchema, CategoryRefSchema',
-    })
   })
 })

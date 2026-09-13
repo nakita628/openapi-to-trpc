@@ -46,7 +46,7 @@ export function generate(spec: string, schema: string, root: string, components:
 
 /**
  * Regenerates __generated__ before the suite: specs/openapi.yaml for every library with its own
- * layout, and specs/recursive.yaml for the libraries that support recursive schemas.
+ * layout, and specs/recursive.yaml for every library.
  */
 // oxlint-disable-next-line import/no-default-export -- Vitest resolves a global setup through its default export
 export default async function setup() {
@@ -55,7 +55,7 @@ export default async function setup() {
     ...Object.entries(LAYOUTS).map(([schema, components]) =>
       generate('openapi.yaml', schema, path.join(OUT, schema), components),
     ),
-    ...['zod', 'valibot', 'effect'].map((schema) =>
+    ...['zod', 'valibot', 'arktype', 'effect'].map((schema) =>
       generate('recursive.yaml', schema, path.join(OUT, 'recursive', schema), {
         output: 'components.ts',
       }),

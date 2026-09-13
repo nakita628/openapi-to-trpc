@@ -27,7 +27,7 @@ commit when asked.
 2. Build it in `src/generator/router.ts` as a JSON Schema handed to the oas-truth adapter, not as
    library-specific code: the adapter writes zod, valibot, arktype and Effect Schema from it.
 3. Only what the adapter leaves to the host goes in `src/generator/library.ts` (the Standard
-   Schema wrapper, recursion, the import probe), per library.
+   Schema wrapper and the import probe), per library.
 4. `pnpm test` proves the result type-checks with `tsc` and validates at runtime for every
    library. Add a runtime assertion to `test/generate.test.ts` when the behavior is new.
 
