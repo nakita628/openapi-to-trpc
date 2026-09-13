@@ -97,7 +97,7 @@ describe('openapi-to-trpc <input>', () => {
     const result = await runCli([input, '-o', path.join(dir, 'routes')])
 
     expect(result.ok).toBe(false)
-    expect(result.stderr).toContain('Token "Missing" does not exist')
+    expect(result.stderr).toContain('Missing $ref pointer "#/components/responses/Missing"')
   })
 
   it('rejects an input whose extension is not .yaml/.json/.tsp', async () => {

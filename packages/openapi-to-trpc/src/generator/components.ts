@@ -14,7 +14,7 @@ import {
 } from 'oas-truth'
 import type { ComponentAdapter, Components, SchemaDeclaration } from 'oas-truth'
 
-import { LIBRARIES } from './library.js'
+import { LIBRARIES, withExactOptionalPropertyTypes } from './library.js'
 import type { Library } from './library.js'
 
 export const KINDS = [
@@ -73,13 +73,23 @@ export function makeContext(
   schemas: Components['schemas'],
 ): Context {
   const adapter = makeAdapter(library)
-  const declarations = makeSchemaDeclarations(schemas ?? {}, adapter, { exportTypes: true })
+  const raw = makeSchemaDeclarations(schemas ?? {}, adapter, { exportTypes: true })
+  const declarations = library === 'valibot' ? raw.map(rewriteValibotDeclaration) : raw
   return {
     adapter,
     library,
     readonly,
     schemaIds: new Set(declarations.map((declaration) => declaration.varName)),
     schemas: declarations,
+  }
+}
+
+function rewriteValibotDeclaration(declaration: SchemaDeclaration): SchemaDeclaration {
+  return {
+    name: declaration.name,
+    varName: declaration.varName,
+    fileName: declaration.fileName,
+    code: withExactOptionalPropertyTypes('valibot', declaration.code),
   }
 }
 

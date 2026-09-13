@@ -37,3 +37,16 @@ export const LIBRARIES: {
     standard: (expr) => `Schema.toStandardSchemaV1(${expr})`,
   },
 }
+
+/**
+ * Valibot's `v.optional` output includes `| undefined`. oas-truth's cyclic helper
+ * type does not, so `exactOptionalPropertyTypes` rejects `v.GenericSchema<Helper>`.
+ * Zod uses `.exactOptional()` and matches the helper; Effect annotates with `any`.
+ */
+export function withExactOptionalPropertyTypes(library: Library, code: string) {
+  if (library !== 'valibot') return code
+  return code.replaceAll(/\?:([^;}\n]+)/gu, (match, type: string) => {
+    if (/\|\s*undefined$/u.test(type.trim())) return match
+    return `?:${type.trimEnd()} | undefined`
+  })
+}
