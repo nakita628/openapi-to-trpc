@@ -8,8 +8,10 @@ allowBuilds:
 # The Effect 4 release candidates ship as one set: @effect/platform-node's caret range on
 # @effect/platform-node-shared floats to the newest rc, which peers the matching `effect`. The
 # newest set is let past the release-age gate together so the lockfile never mixes two rcs.
+# oas-truth 0.3.0 and its schema-to-library 0.4.1 are newer than the release-age window.
 minimumReleaseAgeExclude:
   - '@effect/platform-node-shared@4.0.0-rc.115'
   - '@effect/platform-node@4.0.0-rc.115'
   - effect@4.0.0-rc.115
-  - oas-truth@0.0.3
+  - oas-truth@0.3.0
+  - schema-to-library@0.4.1

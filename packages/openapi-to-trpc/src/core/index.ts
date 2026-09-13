@@ -1,16 +1,21 @@
 import path from 'node:path'
 
 import { Data, Effect, FileSystem } from 'effect'
-import { makeAdapter, parseOpenAPI, toIdentifierPascalCase } from 'oas-truth'
+import { parseOpenAPI } from 'oas-truth'
 import type { Components, OpenAPI } from 'oas-truth'
 import { format } from 'oxfmt'
 import type { FormatConfig } from 'oxfmt'
 
 import type { Config } from '../config/index.js'
-import { KINDS, makeDeclarations, makeModule } from '../generator/components.js'
+import {
+  KINDS,
+  makeContext,
+  makeDeclarations,
+  makeModule,
+  schemaImportPath,
+} from '../generator/components.js'
 import type { Context, Kind } from '../generator/components.js'
 import { makeAppRouter, makeProcedures, makeRouter, makeRouterTypes } from '../generator/router.js'
-import { schemaId } from '../generator/schemas.js'
 import { mergeRouter } from '../merge/index.js'
 
 export type GeneratedFile = {
@@ -87,12 +92,7 @@ function emit(file: GeneratedFile, options: FormatConfig | undefined) {
 /** Every file to write, as unformatted code keyed by absolute path. */
 export function makeFiles(openapi: OpenAPI, config: Config): readonly GeneratedFile[] {
   const components = openapi.components ?? {}
-  const context: Context = {
-    adapter: makeAdapter(config.schema),
-    library: config.schema,
-    readonly: config.readonly,
-    schemaIds: new Set(Object.keys(components.schemas ?? {}).map(schemaId)),
-  }
+  const context = makeContext(config.schema, config.readonly, components.schemas)
   const targets = makeTargets(config)
   const schemas = targets.find((target) => target.kinds.includes('schemas'))
   const schemasModule = schemas?.split ? path.join(schemas.output, 'index.ts') : schemas?.output
@@ -139,21 +139,20 @@ function makeComponentFiles(
     const code = declarations.map((d) => d.code).join('\n\n')
     return [{ path: output, code: makeModule(code, context, toSchemas(output)) }]
   }
-  const fileName = (name: string) => uncapitalize(toIdentifierPascalCase(name))
   return [
-    ...declarations.map(({ name, code }) => {
-      const file = path.join(output, `${fileName(name)}.ts`)
+    ...declarations.map(({ code, fileName }) => {
+      const file = path.join(output, `${fileName}.ts`)
       // A split target holds one kind. Split schemas import each other file by file; the
       // other kinds import the schemas module.
       const from = kinds.includes('schemas')
-        ? (id: string) => `./${uncapitalize(id.replace(/Schema$/u, ''))}`
+        ? (id: string) => schemaImportPath(context, id)
         : toSchemas(file)
       return { path: file, code: makeModule(code, context, from) }
     }),
     {
       path: path.join(output, 'index.ts'),
       code: declarations
-        .map(({ name }) => `export * from './${fileName(name)}'`)
+        .map(({ fileName }) => `export * from './${fileName}'`)
         .toSorted()
         .join('\n'),
     },
@@ -193,8 +192,4 @@ function specifier(from: string, to: string) {
       .replace(/\.ts$/u, '')
       .replace(/\/?\bindex$/u, '') || '.'
   return relative.startsWith('.') ? relative : `./${relative}`
-}
-
-function uncapitalize(text: string) {
-  return `${text.charAt(0).toLowerCase()}${text.slice(1)}`
 }

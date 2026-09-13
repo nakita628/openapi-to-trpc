@@ -92,7 +92,7 @@ here, so the two stay one standard. When a rule is added:
   `Argument.File`), so a bump is a change of its own — see the playbook.
 - pnpm holds a release back for a day (`minimumReleaseAge`). When it would let only part of an
   Effect set through, the newest set is listed together under `minimumReleaseAgeExclude` in
-  `pnpm-workspace.yaml`, as `oas-truth@0.0.3` is.
+  `pnpm-workspace.yaml`, as `oas-truth@0.3.0` and `schema-to-library@0.4.1` are.
 - `@apidevtools/swagger-parser`, `@typespec/compiler` and `@typespec/openapi3` are peers of
   oas-truth, which npm and pnpm install automatically. Nothing here imports them, so they are not
   dependencies of the package.

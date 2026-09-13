@@ -78,19 +78,26 @@ describe('openapi-to-trpc <input>', () => {
 
   it('surfaces a generator failure', async () => {
     const dir = useTmpDir()
+    const input = path.join(dir, 'broken.yaml')
+    fs.writeFileSync(
+      input,
+      [
+        'openapi: 3.1.0',
+        'info: { title: Broken, version: 1.0.0 }',
+        'paths:',
+        '  /x:',
+        '    get:',
+        '      responses:',
+        "        '200':",
+        "          $ref: '#/components/responses/Missing'",
+        '',
+      ].join('\n'),
+    )
 
-    const result = await runCli([
-      path.join(SPECS, 'recursive.yaml'),
-      '-s',
-      'arktype',
-      '-o',
-      path.join(dir, 'routes'),
-    ])
+    const result = await runCli([input, '-o', path.join(dir, 'routes')])
 
     expect(result.ok).toBe(false)
-    expect(result.stderr).toContain(
-      'arktype does not support recursive schemas: CommentSchema, CategorySchema, CategoryRefSchema',
-    )
+    expect(result.stderr).toContain('Missing $ref pointer "#/components/responses/Missing"')
   })
 
   it('rejects an input whose extension is not .yaml/.json/.tsp', async () => {
