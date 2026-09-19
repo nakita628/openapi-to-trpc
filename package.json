@@ -28,5 +28,5 @@
     "textlint-rule-terminology": "5.2.16",
     "vite-plus": "0.3.1"
   },
-  "packageManager": "pnpm@11.11.0"
+  "packageManager": "pnpm@11.26.0"
 }
