@@ -17,11 +17,11 @@
     "test": "vp run --filter ./packages/openapi-to-trpc --filter ./test test"
   },
   "devDependencies": {
-    "@secretlint/secretlint-rule-preset-recommend": "13.0.5",
+    "@secretlint/secretlint-rule-preset-recommend": "13.0.7",
     "@textlint-rule/textlint-rule-no-unmatched-pair": "2.0.4",
-    "cspell": "10.3.3",
-    "markdownlint-cli2": "0.23.2",
-    "secretlint": "13.0.5",
+    "cspell": "10.3.6",
+    "markdownlint-cli2": "0.23.3",
+    "secretlint": "13.0.7",
     "textlint": "15.8.0",
     "textlint-filter-rule-comments": "1.3.0",
     "textlint-rule-no-todo": "2.0.1",
