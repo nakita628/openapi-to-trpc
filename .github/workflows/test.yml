@@ -42,5 +42,8 @@ jobs:
       # calls the routers through a tRPC caller.
       - run: vp run --filter ./test test
 
+      # The examples under apps/ run their own tests against the generated code they commit.
+      - run: vp run --filter './apps/*' test
+
       # vp fmt, oxlint and the type checks of every workspace, then `pnpm lint`.
       - run: vp run check

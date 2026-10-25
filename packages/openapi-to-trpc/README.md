@@ -294,6 +294,10 @@ httpBatchLink({
 
 It is the `credentials` of `fetch` — `'include'`, `'same-origin'` or `'omit'` — and nothing is written when it is left out.
 
+## Example
+
+[`apps/todo`](https://github.com/nakita628/openapi-to-trpc/tree/main/apps/todo) is a todo API generated from an OpenAPI document: routers with hand-written resolvers, a tRPC server and the generated client, with tests.
+
 ## Contributing
 
 If you find an issue with the generated code or have a suggestion, open an issue at [GitHub Issues](https://github.com/nakita628/openapi-to-trpc/issues) or send a pull request.
@@ -303,7 +307,7 @@ Lint and tests run from the repository root:
 ```bash
 pnpm check   # vp fmt, oxlint and type checks per workspace, then `pnpm lint`
 pnpm lint    # markdownlint, textlint, cspell, secretlint, then actionlint and zizmor
-pnpm test    # unit tests, then the generated routers of every validator library
+pnpm test    # unit tests, the generated routers of every validator library, then apps/todo
 pnpm build   # packs packages/openapi-to-trpc into dist
 ```
 

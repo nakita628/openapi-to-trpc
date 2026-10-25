@@ -14,7 +14,7 @@
     "lint:spell": "cspell --no-progress --dot '**'",
     "lint:secret": "secretlint '**/*'",
     "lint:actions": "node scripts/actionlint.ts -color && node scripts/zizmor.ts .github/workflows",
-    "test": "vp run --filter ./packages/openapi-to-trpc --filter ./test test"
+    "test": "vp run --filter ./packages/openapi-to-trpc --filter ./test --filter './apps/*' test"
   },
   "devDependencies": {
     "@secretlint/secretlint-rule-preset-recommend": "13.0.7",
