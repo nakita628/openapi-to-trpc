@@ -27,7 +27,7 @@ second. A new `src/` directory gets its own override.
 | Directory | Owns | Never does |
 | --- | --- | --- |
 | `config/` | the config schema, `defineConfig`, `parseConfig`, `readConfig`, `ConfigError` | import anything internal |
-| `generator/` | code builders: `components.ts` (every component kind, imports), `router.ts` (procedures, routers, `appRouter`, router types), `library.ts` (what each validator library needs on top of oas-truth) — string in, string out | touch the filesystem or run an Effect |
+| `generator/` | code builders: `components.ts` (every component kind, imports), `router.ts` (procedures, routers, `appRouter`, router types), `library.ts` (what each validator library needs on top of oas-truth), `client.ts` (the typed tRPC client) — string in, string out | touch the filesystem or run an Effect |
 | `merge/` | `mergeRouter`: a regenerated router merged into what the user already wrote | know about OpenAPI |
 | `core/` | `makeFiles` (config + document → every file, pure) and `openapiToTrpc` (the Effect program: parse, build, merge, format, write) | parse the command line |
 | `cli/` | the `openapi-to-trpc` command on `effect/cli` | generator logic |
@@ -57,7 +57,7 @@ other imports and code (a customized `initTRPC`, helpers).
   object, the resolvers and the `.input()` / `.output()` calls; add a merge test when the emitted
   structure changes.
 
-Every other output (`<output>/index.ts`, the components, the router types) is the generator's
+Every other output (`<output>/index.ts`, the components, the router types, the client) is the generator's
 and is rewritten wholesale.
 
 ## The generated code

@@ -7,6 +7,7 @@ import { format } from 'oxfmt'
 import type { FormatConfig } from 'oxfmt'
 
 import type { Config } from '../config/index.js'
+import { makeClient } from '../generator/client.js'
 import {
   KINDS,
   makeContext,
@@ -120,6 +121,7 @@ export function makeFiles(openapi: OpenAPI, config: Config): readonly GeneratedF
     return { path: file, code, merge: true }
   })
   const typeFile = config.type && path.resolve(config.type.output)
+  const clientFile = config.client && path.resolve(config.client.output)
 
   return [
     ...componentFiles,
@@ -127,6 +129,18 @@ export function makeFiles(openapi: OpenAPI, config: Config): readonly GeneratedF
     { path: appRouter, code: makeAppRouter([...procedures.keys()]) },
     ...(typeFile
       ? [{ path: typeFile, code: makeRouterTypes(specifier(typeFile, appRouter)) }]
+      : []),
+    ...(config.client && clientFile
+      ? [
+          {
+            path: clientFile,
+            code: makeClient(
+              config.client.import ?? specifier(clientFile, appRouter),
+              config.client.baseUrl,
+              config.client.credentials,
+            ),
+          },
+        ]
       : []),
   ]
 }

@@ -6,6 +6,22 @@ import { describe, expect, it } from 'vite-plus/test'
 import { defineConfig, parseConfig } from './index.js'
 
 describe('parseConfig', () => {
+  it.each([
+    [undefined, '/'],
+    ['/trpc', '/trpc'],
+    [{ env: 'VITE_API_URL' }, { env: 'VITE_API_URL', source: 'import.meta.env' }],
+    [
+      { env: 'API_URL', import: '@/env' },
+      { env: 'API_URL', import: '@/env', name: 'env' },
+    ],
+  ])('reads client.baseUrl %j as %j', (baseUrl, decoded) => {
+    const client = { output: 'src/client.ts', ...(baseUrl === undefined ? {} : { baseUrl }) }
+    expect(Effect.runSync(parseConfig({ input: 'openapi.yaml', client })).client).toStrictEqual({
+      output: 'src/client.ts',
+      baseUrl: decoded,
+    })
+  })
+
   it('fills in defaults', () => {
     expect(
       Effect.runSync(
@@ -61,6 +77,18 @@ describe('parseConfig', () => {
     [
       { input: 'openapi.yaml', components: { schemas: { output: 'src/routes' } } },
       'components.schemas.output and output both write to src/routes/index.ts. Give each its own output path.',
+    ],
+    [
+      { input: 'openapi.yaml', client: { output: 'src/client.js' } },
+      'client.output: must be .ts file',
+    ],
+    [
+      { input: 'openapi.yaml', client: { output: 'src/client.ts', baseUrl: 'https://api.test' } },
+      "client.baseUrl: must be a same-origin path such as '/trpc': read an absolute URL from the environment with { env } or { env, import }",
+    ],
+    [
+      { input: 'openapi.yaml', client: { output: 'src/routes/index.ts' } },
+      'client.output and output both write to src/routes/index.ts. Give each its own output path.',
     ],
   ])('rejects %j', (config, message) => {
     expect(Effect.runSync(Effect.flip(parseConfig(config)))).toMatchObject({

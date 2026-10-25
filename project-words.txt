@@ -21,6 +21,7 @@ takibi
 textlint
 textlintrc
 uncapitalize
+unstub
 voidzero
 zizmor
 zizmorcore

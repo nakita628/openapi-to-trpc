@@ -12,6 +12,7 @@ npm install -D openapi-to-trpc
 - One tRPC router per resource (first path segment) plus an `appRouter`
 - Component output as one file, one file per kind, or one file per entry
 - Router type helpers (`RouterInputs` / `RouterOutputs`)
+- A typed tRPC client (`createTRPCClient<typeof appRouter>`)
 - Regeneration keeps your implemented resolvers
 
 ## Quick Start
@@ -219,14 +220,24 @@ export default defineConfig({
 
   // Router type helpers (`RouterInputs` / `RouterOutputs`)
   type: { output: 'src/types.ts' },
+
+  // Typed tRPC client, see below
+  client: { output: 'src/client.ts', baseUrl: '/trpc' },
 })
 ```
 
 Recursive schemas (self or mutual `$ref` cycles) are supported for every validator library.
 
-## Setting up the tRPC client
+## Client
 
-The client is yours to create — the URL, headers, transformer and `fetch` are runtime concerns:
+A `client` block generates the tRPC client of the `appRouter`; you never create one.
+
+```ts
+export default defineConfig({
+  input: 'openapi.yaml',
+  client: { output: 'src/client.ts', baseUrl: '/trpc' },
+})
+```
 
 ```ts
 // src/client.ts
@@ -235,11 +246,53 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import type { appRouter } from './routes'
 
 export const client = createTRPCClient<typeof appRouter>({
-  links: [httpBatchLink({ url: '/api/trpc' })],
+  links: [httpBatchLink({ url: '/trpc' })],
 })
 ```
 
-Use `import type` so server code never reaches the client bundle, then call `client.users.getUsersUserId.query({ userId })`.
+Then call `client.users.getUsersUserId.query({ userId })`. Only the type of the router is imported, so no server code reaches the client bundle. The file is rewritten on every run.
+
+| Option               | Sets                     | Meaning                                                 |
+| -------------------- | ------------------------ | ------------------------------------------------------- |
+| `client.output`      | the file                 | A `.ts` file.                                           |
+| `client.baseUrl`     | `httpBatchLink({ url })` | Where the tRPC handler is mounted, see below.           |
+| `client.import`      | `from './routes'`        | Where the router type comes from. Only across packages. |
+| `client.credentials` | `fetch` of the link      | Send cookies with every request, see below.             |
+
+### Base URL
+
+`'/'` by default. A same-origin path (`'/trpc'`, `'/api/trpc'`) is written into the file; an absolute URL differs between environments, so it comes from the environment, with no fallback:
+
+| `baseUrl`                                   | Generated                       |
+| ------------------------------------------- | ------------------------------- |
+| `'/trpc'`                                   | `'/trpc'`                       |
+| `{ env: 'VITE_API_URL' }`                   | `import.meta.env.VITE_API_URL!` |
+| `{ env: 'API_URL', source: 'process.env' }` | `process.env.API_URL!`          |
+| `{ env: 'API_URL', import: '@/env' }`       | `env.API_URL` from `@/env`      |
+
+With `import`, the export is `env` unless `name` says otherwise:
+
+```ts
+baseUrl: { env: 'API_URL', import: '../config', name: 'config' } // config.API_URL
+```
+
+### Cookies
+
+A client of an API on another origin needs `credentials: 'include'` to send its cookies. `client.credentials` writes it into the link's `fetch`, as the [tRPC guide](https://trpc.io/docs/client/cors) does:
+
+```ts
+client: { output: 'src/client.ts', credentials: 'include' }
+```
+
+```ts
+httpBatchLink({
+  url: '/',
+  fetch: (input, { signal, ...init } = {}) =>
+    fetch(input, { ...init, ...(signal && { signal }), credentials: 'include' }),
+})
+```
+
+It is the `credentials` of `fetch` — `'include'`, `'same-origin'` or `'omit'` — and nothing is written when it is left out.
 
 ## Contributing
 

@@ -105,6 +105,60 @@ describe('makeFiles components', () => {
   })
 })
 
+/** The generated client file for `client`, written next to the default router directory. */
+async function clientCode(client: object) {
+  const openapi = await parseOpenAPI(input)
+  if (!openapi.ok) throw new Error(openapi.error)
+  return makeFiles(openapi.value, config({ client: { output: 'src/client.ts', ...client } }))
+    .find((file) => file.path.endsWith('client.ts'))
+    ?.code.split('\n')
+}
+
+describe('makeFiles client', () => {
+  it('creates the client on the router type at a same-origin path', async () => {
+    expect(await clientCode({})).toStrictEqual([
+      "import {createTRPCClient,httpBatchLink} from '@trpc/client'",
+      '',
+      "import type {appRouter} from './routes'",
+      '',
+      'export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:"/"})]})',
+    ])
+  })
+
+  it.each([
+    [{ baseUrl: '/trpc' }, '"/trpc"', []],
+    [
+      { baseUrl: { env: 'VITE_API_URL' } },
+      'baseUrl',
+      ['const baseUrl=import.meta.env.VITE_API_URL!'],
+    ],
+    [
+      { baseUrl: { env: 'API_URL', source: 'process.env' } },
+      'baseUrl',
+      ['const baseUrl=process.env.API_URL!'],
+    ],
+    [
+      { baseUrl: { env: 'API_URL', import: '@/env' } },
+      'env.API_URL',
+      ["import {env} from '@/env'"],
+    ],
+  ])('reads %j into the link url', async (client, url, lines) => {
+    const code = await clientCode(client)
+    expect(code?.at(-1)).toBe(
+      `export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:${url}})]})`,
+    )
+    expect(code).toStrictEqual(expect.arrayContaining(lines))
+  })
+
+  it('imports the router type from client.import and passes credentials through fetch', async () => {
+    const code = await clientCode({ import: '@packages/server', credentials: 'include' })
+    expect(code).toContain("import type {appRouter} from '@packages/server'")
+    expect(code?.at(-1)).toBe(
+      'export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:"/",fetch:(input,{signal,...init}={})=>fetch(input,{...init,...(signal&&{signal}),credentials:"include"})})]})',
+    )
+  })
+})
+
 describe('openapiToTrpc', () => {
   it('keeps an implemented resolver when regenerating', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openapi-to-trpc-'))

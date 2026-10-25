@@ -45,6 +45,16 @@ const FileOutputSchema = Schema.String.pipe(
   examples: ['./src/components.ts', './src/components'],
 })
 
+/** A JavaScript identifier: the name of an export the generated code imports. */
+const IDENTIFIER_PATTERN = /^[A-Za-z_$][\w$]*$/u
+
+/** A module specifier written into generated code as it stands. */
+const ModuleSpecifierSchema = Schema.String.check(
+  Schema.isPattern(/^[^\s'"`\\]+$/u, {
+    message: 'must be a module specifier, with no whitespace or quotes',
+  }),
+)
+
 /**
  * One component section's output target, the shape hono-takibi gives it: `output` is a `.ts`
  * file, or a directory — one file per entry plus an index.ts barrel when `split` is true, its
@@ -122,6 +132,79 @@ const COMPONENT_KINDS = [
   'pathItems',
   'mediaTypes',
 ] as const
+
+/** Where the client finds the tRPC endpoint: a same-origin path, or the environment. */
+const BaseUrlSchema = Schema.Union([
+  // An absolute URL differs between environments, so it is read from the environment instead;
+  // a path is the same everywhere the client is served from the origin of the API.
+  Schema.String.check(
+    Schema.isPattern(/^\/[^\s'"`\\]*$/u, {
+      message:
+        "must be a same-origin path such as '/trpc': read an absolute URL from the environment with { env } or { env, import }",
+    }),
+  ),
+  // An object that names a module is read as one: the member that takes `import` stands
+  // first, since the other would take the object as well and leave `import` out.
+  Schema.Struct({
+    env: Schema.String.check(
+      Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u, {
+        message: 'must be the name of an environment variable',
+      }),
+    ).annotate({
+      title: 'Environment variable',
+      description:
+        'The property of the imported environment object that holds the endpoint URL: `API_URL` for `env.API_URL`.',
+      examples: ['API_URL'],
+    }),
+    import: ModuleSpecifierSchema.annotate({
+      title: 'Import specifier',
+      description:
+        'The module of yours that exports the environment object, written into the client file as it stands: `@/env`, `../env`. Such a module validates its exports, so no fallback is written.',
+      examples: ['@/env', '../env'],
+    }),
+    name: Schema.String.check(
+      Schema.isPattern(IDENTIFIER_PATTERN, { message: 'must be a JavaScript identifier' }),
+    )
+      .pipe(Schema.withDecodingDefault(Effect.succeed('env')))
+      .annotate({
+        title: 'Environment export name',
+        description:
+          'The named export of `import` that is the environment object, `env` when left out.',
+        examples: ['env'],
+      }),
+  }),
+  Schema.Struct({
+    env: Schema.String.check(
+      Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u, {
+        message: 'must be the name of an environment variable',
+      }),
+    ).annotate({
+      title: 'Environment variable',
+      description:
+        'The environment variable the endpoint URL is read from when the client is created, asserted present with `!`: `VITE_API_URL` for a Vite build, `API_URL` for Node.js.',
+      examples: ['VITE_API_URL', 'API_URL'],
+    }),
+    source: Schema.Literals(['import.meta.env', 'process.env'])
+      .pipe(Schema.withDecodingDefault(Effect.succeed('import.meta.env')))
+      .annotate({
+        title: 'Where the variable is read from',
+        description:
+          '`import.meta.env` (the default) for code a bundler such as Vite builds, `process.env` for code Node.js runs.',
+        examples: ['import.meta.env', 'process.env'],
+      }),
+  }),
+])
+  .pipe(Schema.withDecodingDefault(Effect.succeed('/')))
+  .annotate({
+    title: 'Base URL',
+    description:
+      "The `url` of the client's `httpBatchLink`: where the tRPC handler is mounted. A same-origin path (`/` by default, `/trpc`, `/api/trpc`) is written into the file. `{ env }` reads an environment variable when the client is created, `import.meta.env.VITE_API_URL!` or `process.env.API_URL!` with `source: 'process.env'`; `{ env, import }` reads a property of an environment object a module of yours exports. Neither has a fallback.",
+    examples: [
+      '/trpc',
+      { env: 'VITE_API_URL', source: 'import.meta.env' },
+      { env: 'API_URL', import: '@/env', name: 'env' },
+    ],
+  })
 
 const ConfigSchema = Schema.Struct({
   input: DocumentPathSchema.annotate({
@@ -238,6 +321,43 @@ const ConfigSchema = Schema.Struct({
       description: '`RouterInputs` / `RouterOutputs` inferred from the `appRouter`.',
     }),
   ),
+  client: Schema.optionalKey(
+    Schema.Struct({
+      output: TypeScriptPathSchema.annotate({
+        title: 'Client output file',
+        examples: ['./src/client.ts'],
+      }),
+      baseUrl: BaseUrlSchema,
+      import: Schema.optionalKey(
+        ModuleSpecifierSchema.annotate({
+          title: 'App router import specifier',
+          description:
+            'Module the client imports the type of the `appRouter` from. Left out, the router directory is imported relatively. Name the package of the server when the client is written into another package: `@packages/server`.',
+          examples: ['@packages/server', '../server/routes'],
+        }),
+      ),
+      credentials: Schema.optionalKey(
+        Schema.Literals(['include', 'same-origin', 'omit']).annotate({
+          title: 'Credentials',
+          description:
+            "The `credentials` of every request the client sends, written as a `fetch` of the `httpBatchLink` that passes them on: the `RequestCredentials` of `fetch`. `include` sends the cookies to any origin, which a client of an API on another origin needs for a session cookie; `same-origin`, the browser's default, sends them to the origin of the page alone; `omit` sends none. Left out, nothing is written.",
+          examples: ['include'],
+        }),
+      ),
+    }).annotate({
+      title: 'Typed client',
+      description:
+        'The tRPC client of the generated `appRouter`: `createTRPCClient<typeof appRouter>` with an `httpBatchLink`. Only the type of the router is imported, so no server code reaches the client bundle. The file is rewritten on every run.',
+      examples: [
+        { output: './src/client.ts', baseUrl: '/trpc' },
+        {
+          output: './src/client.ts',
+          baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' },
+          credentials: 'include',
+        },
+      ],
+    }),
+  ),
 })
   .check(
     // Two outputs aimed at one path is silent data loss, not a merge: every file is written
@@ -254,6 +374,7 @@ const ConfigSchema = Schema.Struct({
           (kind) => [`components.${kind}.output`, componentFile(v.components?.[kind])] as const,
         ),
         ['type.output', v.type?.output],
+        ['client.output', v.client?.output],
       ]
       const seen = new Map<string, string>()
       for (const [field, output] of declared) {
