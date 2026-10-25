@@ -105,6 +105,98 @@ describe('makeFiles components', () => {
   })
 })
 
+/** The line of `file` that imports `UserSchema` or the type of the `appRouter`. */
+function importOf(files: readonly { path: string; code: string }[], file: string) {
+  return files
+    .find((f) => f.path.endsWith(file))
+    ?.code.split('\n')
+    .find((line) => /^import (?:type )?\{(?:UserSchema|appRouter)\}/u.test(line))
+}
+
+/** Every file under `packages/<name>/` in the package `name`, the rest in `server`. */
+function packageRootOf(name: string) {
+  return (file: string) => (file.includes(`/packages/${name}/`) ? name : 'server')
+}
+
+describe('makeFiles imports', () => {
+  const openapi = {
+    openapi: '3.2.0',
+    info: { title: 'imports', version: '1.0.0' },
+    paths: {
+      '/users': {
+        get: {
+          responses: {
+            '200': {
+              description: 'a user',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } },
+            },
+          },
+        },
+      },
+    },
+    components: {
+      schemas: { User: { type: 'object', properties: { id: { type: 'string' } } } },
+      responses: {
+        One: {
+          description: 'a user',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } },
+        },
+      },
+    },
+  } as const
+
+  it('imports under pathAlias what is in the directory that holds the router directory', () => {
+    const files = makeFiles(
+      openapi,
+      config({
+        pathAlias: '@/',
+        components: {
+          schemas: { output: 'src/components/schemas' },
+          responses: { output: 'src/components/responses.ts' },
+        },
+        type: { output: 'src/types.ts' },
+        client: { output: 'src/client.ts' },
+      }),
+    )
+    expect(
+      ['routes/users.ts', 'responses.ts', 'types.ts', 'client.ts'].map((file) =>
+        importOf(files, file),
+      ),
+    ).toStrictEqual([
+      "import {UserSchema} from '@/components/schemas'",
+      "import {UserSchema} from '@/components/schemas'",
+      "import type {appRouter} from '@/routes'",
+      "import type {appRouter} from '@/routes'",
+    ])
+  })
+
+  it('imports a components output of another package by its package', () => {
+    const files = makeFiles(
+      openapi,
+      config({
+        pathAlias: '@/',
+        components: { output: 'packages/components/index.ts', package: '@packages/components' },
+      }),
+      packageRootOf('components'),
+    )
+    expect(importOf(files, 'routes/users.ts')).toBe(
+      "import {UserSchema} from '@packages/components'",
+    )
+  })
+
+  it('fails on a components output of another package that names no package', () => {
+    expect(() =>
+      makeFiles(
+        openapi,
+        config({ components: { schemas: { output: 'packages/schemas/index.ts' } } }),
+        packageRootOf('schemas'),
+      ),
+    ).toThrow(
+      'output imports components.schemas from another package: set components.schemas.package to the name of the package packages/schemas/index.ts is written into.',
+    )
+  })
+})
+
 /** The generated client file for `client`, written next to the default router directory. */
 async function clientCode(client: object) {
   const openapi = await parseOpenAPI(input)
@@ -177,6 +269,32 @@ describe('openapiToTrpc', () => {
     fs.writeFileSync(router, implemented)
     await run(value)
     expect(fs.readFileSync(router, 'utf-8')).toBe(implemented)
+    fs.rmSync(dir, { recursive: true })
+  })
+
+  it('finds the package of each output by the nearest package.json', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openapi-to-trpc-'))
+    for (const name of ['server', 'components']) {
+      fs.mkdirSync(path.join(dir, name), { recursive: true })
+      fs.writeFileSync(path.join(dir, name, 'package.json'), '{}')
+    }
+    const value = {
+      output: path.join(dir, 'server/src/routes'),
+      components: { schemas: { output: path.join(dir, 'components/src/index.ts') } },
+    }
+    expect(await runError(value)).toMatchObject({
+      _tag: 'GenerateError',
+      message: expect.stringContaining(
+        'output imports components.schemas from another package: set components.schemas.package',
+      ),
+    })
+    await run({
+      ...value,
+      components: { schemas: { ...value.components.schemas, package: '@packages/components' } },
+    })
+    expect(fs.readFileSync(path.join(dir, 'server/src/routes/posts.ts'), 'utf-8')).toContain(
+      "from '@packages/components'",
+    )
     fs.rmSync(dir, { recursive: true })
   })
 

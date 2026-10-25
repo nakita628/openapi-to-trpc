@@ -45,6 +45,20 @@ describe('parseConfig', () => {
     })
   })
 
+  it('takes the package of each components output and the path alias', () => {
+    const config = Effect.runSync(
+      parseConfig({
+        input: 'openapi.yaml',
+        pathAlias: '@/',
+        components: { output: 'a.ts', package: '@packages/components' },
+      }),
+    )
+    expect([config.pathAlias, config.components]).toStrictEqual([
+      '@/',
+      { output: 'a.ts', package: '@packages/components' },
+    ])
+  })
+
   it.each([
     [{ input: 'openapi.txt' }, 'input: must be .yaml | .yml | .json | .tsp'],
     [
@@ -77,6 +91,22 @@ describe('parseConfig', () => {
     [
       { input: 'openapi.yaml', components: { schemas: { output: 'src/routes' } } },
       'components.schemas.output and output both write to src/routes/index.ts. Give each its own output path.',
+    ],
+    [
+      { input: 'openapi.yaml', components: { schemas: { output: 'b.ts' }, package: '@p/c' } },
+      'components: components.package goes with components.output: a per-type output names its package in its own block.',
+    ],
+    [
+      { input: 'openapi.yaml', components: { schemas: { output: 'b.ts', import: '@/schemas' } } },
+      'components.schemas.import: import is not taken: a generated file imports another one relatively, under pathAlias inside the directory that holds the router directory, or by package from another package.',
+    ],
+    [
+      { input: 'openapi.yaml', components: { schemas: { output: 'b.ts', package: '@p c' } } },
+      'components.schemas.package: must be a module specifier, with no whitespace or quotes',
+    ],
+    [
+      { input: 'openapi.yaml', pathAlias: "@/'" },
+      'pathAlias: must be an import prefix, with no whitespace or quotes',
     ],
     [
       { input: 'openapi.yaml', client: { output: 'src/client.js' } },
