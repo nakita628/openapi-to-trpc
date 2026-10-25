@@ -25,13 +25,14 @@ import type {
 import { LIBRARIES } from './library.js'
 import type { Library } from './library.js'
 
+/** The Components Object sections, in hono-takibi's order: a bundled file declares them so. */
 export const KINDS = [
   'schemas',
-  'parameters',
-  'headers',
   'responses',
-  'requestBodies',
+  'parameters',
   'examples',
+  'requestBodies',
+  'headers',
   'securitySchemes',
   'links',
   'callbacks',
@@ -86,9 +87,10 @@ export function makeContext(
   library: Library,
   readonly: boolean,
   schemas: Components['schemas'],
+  exportTypes: boolean,
 ): Context {
   const adapter = makeAdapter(library)
-  const declarations = makeSchemaDeclarations(schemas ?? {}, adapter, { exportTypes: true })
+  const declarations = makeSchemaDeclarations(schemas ?? {}, adapter, { exportTypes })
   return {
     adapter,
     library,

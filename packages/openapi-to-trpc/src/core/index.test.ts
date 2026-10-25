@@ -84,6 +84,14 @@ describe('makeFiles components', () => {
     expect(code('responses.ts')).toContain("import {User2Schema} from './schemas'")
   })
 
+  it('leaves the schema types out when schemas.exportTypes is false', () => {
+    const [schemas] = makeFiles(
+      openapi,
+      config({ components: { schemas: { output: 'src/schemas.ts', exportTypes: false } } }),
+    )
+    expect(schemas?.code).not.toContain('export type')
+  })
+
   it('writes components.mediaTypes with their inferred types', () => {
     expect(code('mediaTypes.ts')).toBe(
       [

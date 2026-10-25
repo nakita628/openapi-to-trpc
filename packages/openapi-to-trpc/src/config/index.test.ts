@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vite-plus/test'
 import { defineConfig, parseConfig } from './index.js'
 
 describe('parseConfig', () => {
-  it('fills in defaults and normalizes component outputs to files', () => {
+  it('fills in defaults', () => {
     expect(
       Effect.runSync(
         parseConfig({
@@ -23,8 +23,8 @@ describe('parseConfig', () => {
       output: 'src/routes',
       readonly: false,
       components: {
-        schemas: { output: 'src/schemas/index.ts', split: false, exportTypes: false },
-        responses: { output: 'src/responses', split: true, exportTypes: false },
+        schemas: { output: 'src/schemas', split: false, exportTypes: true },
+        responses: { output: 'src/responses', split: true },
       },
     })
   })
@@ -41,11 +41,11 @@ describe('parseConfig', () => {
     ],
     [
       { input: 'openapi.yaml', components: { schemas: { output: 'a.ts', split: true } } },
-      'components.schemas.output: must be a directory, not a .ts file',
+      'components.schemas: split mode requires directory, not .ts file',
     ],
     [
       { input: 'openapi.yaml', components: { output: 'a.ts', schemas: { output: 'b.ts' } } },
-      'components: components.output (one file for every component) excludes per-kind outputs (schemas, responses, ...)',
+      'components: components.output is mutually exclusive with per-type component outputs (schemas, responses, ...). Use output for single-file mode, or per-type fields for split mode.',
     ],
     [
       { input: 'openapi.yaml', type: { output: 'src/routes/index.ts' } },
@@ -57,6 +57,10 @@ describe('parseConfig', () => {
         components: { schemas: { output: 'a.ts' }, mediaTypes: { output: 'a.ts' } },
       },
       'components.mediaTypes.output and components.schemas.output both write to a.ts. Give each its own output path.',
+    ],
+    [
+      { input: 'openapi.yaml', components: { schemas: { output: 'src/routes' } } },
+      'components.schemas.output and output both write to src/routes/index.ts. Give each its own output path.',
     ],
   ])('rejects %j', (config, message) => {
     expect(Effect.runSync(Effect.flip(parseConfig(config)))).toMatchObject({

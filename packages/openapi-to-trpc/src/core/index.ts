@@ -92,9 +92,16 @@ function emit(file: GeneratedFile, options: FormatConfig | undefined) {
 /** Every file to write, as unformatted code keyed by absolute path. */
 export function makeFiles(openapi: OpenAPI, config: Config): readonly GeneratedFile[] {
   const components = openapi.components ?? {}
-  const context = makeContext(config.schema, config.readonly, components.schemas)
   const targets = makeTargets(config)
   const schemas = targets.find((target) => target.kinds.includes('schemas'))
+  // Schemas export their inferred types unless their own target turns it off; a single
+  // components file always carries them.
+  const context = makeContext(
+    config.schema,
+    config.readonly,
+    components.schemas,
+    config.components?.schemas?.exportTypes ?? true,
+  )
   const schemasModule = schemas?.split ? path.join(schemas.output, 'index.ts') : schemas?.output
   const toSchemas = (file: string) => () => specifier(file, schemasModule ?? file)
 
@@ -162,7 +169,9 @@ function makeComponentFiles(
 /**
  * Where each component kind goes: every kind into `components.output`, or each configured kind
  * into its own output — schemas always, by default into `components/index.ts` next to the router
- * directory (`src/components/index.ts` for the default `src/routes`).
+ * directory (`src/components/index.ts` for the default `src/routes`). A directory that is not
+ * split is its `index.ts`; `exportTypes` is only taken by the kinds whose entries are
+ * validators.
  */
 function makeTargets(config: Config): readonly Target[] {
   const { output, ...kinds } = config.components ?? {}
@@ -173,13 +182,21 @@ function makeTargets(config: Config): readonly Target[] {
     const target =
       kinds[kind] ??
       (kind === 'schemas'
-        ? {
-            output: path.join(path.dirname(config.output), 'components', 'index.ts'),
-            split: false,
-            exportTypes: false,
-          }
+        ? { output: path.join(path.dirname(config.output), 'components', 'index.ts'), split: false }
         : undefined)
-    return target ? [{ ...target, kinds: [kind], output: path.resolve(target.output) }] : []
+    if (target === undefined) return []
+    const file =
+      target.split || target.output.endsWith('.ts')
+        ? target.output
+        : path.join(target.output, 'index.ts')
+    return [
+      {
+        kinds: [kind],
+        output: path.resolve(file),
+        split: target.split,
+        exportTypes: 'exportTypes' in target && target.exportTypes === true,
+      },
+    ]
   })
 }
 

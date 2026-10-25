@@ -195,21 +195,21 @@ export default defineConfig({
   // oxfmt options for the generated code
   // format: { printWidth: 100 },
 
-  // Components (OpenAPI Components Object). Either every kind into one file:
+  // Components (OpenAPI Components Object). Either every section into one file:
   // components: { output: 'src/components.ts' },
   //
-  // or each kind into its own output. `split: true` makes `output` a directory with one file
-  // per entry plus an index.ts barrel. `exportTypes: true` adds inferred types to parameters,
-  // headers and mediaTypes (schemas always export theirs). Schemas default to
-  // components/index.ts next to the router directory; the other kinds are only written when
-  // configured. `mediaTypes` is OpenAPI 3.2's `components.mediaTypes`.
+  // or each section into its own output: a `.ts` file, or a directory — one file per entry plus
+  // an index.ts barrel with `split: true`, its index.ts without. Schemas default to
+  // components/index.ts next to the router directory; the other sections are only written when
+  // configured. `exportTypes` adds the inferred types to the sections whose entries are
+  // validators: schemas (on by default), parameters, headers and mediaTypes (OpenAPI 3.2).
   components: {
-    schemas: { output: 'src/components/schemas', split: true },
-    parameters: { output: 'src/components/parameters.ts', exportTypes: true },
-    headers: { output: 'src/components/headers.ts' },
+    schemas: { output: 'src/components/schemas', split: true, exportTypes: true },
     responses: { output: 'src/components/responses.ts' },
-    requestBodies: { output: 'src/components/requestBodies.ts' },
+    parameters: { output: 'src/components/parameters.ts', exportTypes: true },
     examples: { output: 'src/components/examples.ts' },
+    requestBodies: { output: 'src/components/requestBodies.ts' },
+    headers: { output: 'src/components/headers.ts' },
     securitySchemes: { output: 'src/components/securitySchemes.ts' },
     links: { output: 'src/components/links.ts' },
     callbacks: { output: 'src/components/callbacks.ts' },

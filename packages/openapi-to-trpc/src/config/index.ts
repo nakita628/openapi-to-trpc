@@ -23,7 +23,7 @@ const DocumentPathSchema = Schema.declare<
 
 const TypeScriptPathSchema = Schema.declare<`${string}.ts`>(
   Schema.is(Schema.TemplateLiteral([Schema.String, '.ts'])),
-  { message: 'must be a .ts file' },
+  { message: 'must be .ts file' },
 )
 
 const DirectorySchema = Schema.String.check(
@@ -45,56 +45,77 @@ const FileOutputSchema = Schema.String.pipe(
   examples: ['./src/components.ts', './src/components'],
 })
 
-const ExportTypesSchema = Schema.Boolean.pipe(
-  Schema.withDecodingDefault(Effect.succeed(false)),
-).annotate({
-  description:
-    'Also export the type inferred from each entry (parameters, headers; schemas always do).',
-})
+/**
+ * One component section's output target, the shape hono-takibi gives it: `output` is a `.ts`
+ * file, or a directory — one file per entry plus an index.ts barrel when `split` is true, its
+ * `index.ts` when not.
+ */
+function makeComponentFields() {
+  return {
+    output: Schema.String.annotate({
+      title: 'Output target',
+      description:
+        'A `.ts` file, or a directory — which takes one file per entry when `split` is true, and its `index.ts` when not.',
+    }),
+    split: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
+      description: 'Write one file per entry into `output` rather than a single file.',
+    }),
+  }
+}
+
+function makeSplitFilter() {
+  return Schema.makeFilter(
+    (v: { readonly split: boolean; readonly output: string }) =>
+      !(v.split && v.output.endsWith('.ts')),
+    { message: 'split mode requires directory, not .ts file' },
+  )
+}
+
+/** A section whose entries are data (responses, examples, ...): no inferred types to export. */
+function makeComponentOutput(title: string, section: string, example: string) {
+  return Schema.Struct(makeComponentFields())
+    .check(makeSplitFilter())
+    .annotate({
+      title,
+      description: `Destination for \`components.${section}\`.`,
+      examples: [{ output: example, split: false }],
+    })
+}
 
 /**
- * One component kind's output target. `split: true` writes one file per entry into a
- * directory, anything else a single file.
- *
- * `Schema.Union` resolves members in order and each member pins `split` to a literal, so a
- * member is only reachable through its own discriminant — the failure reported is the one
- * inside the matching branch, not a union-wide "no member matched".
+ * A section whose entries are validators (schemas, parameters, headers, mediaTypes), which can
+ * also export the type each one infers. Schemas export theirs unless told not to.
  */
-const ComponentOutputSchema = Schema.Union([
-  Schema.Struct({
-    split: Schema.Literal(true).annotate({
-      description: 'Write one file per entry into `output`, plus an index.ts barrel.',
+function makeTypedComponentOutput(
+  title: string,
+  section: string,
+  example: string,
+  exportTypes: boolean,
+) {
+  return Schema.Struct({
+    ...makeComponentFields(),
+    exportTypes: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(exportTypes)),
+    ).annotate({
+      description: `Also export the TypeScript type inferred from each generated schema (default ${String(exportTypes)}).`,
     }),
-    output: DirectorySchema.annotate({
-      title: 'Output directory',
-      examples: ['./src/components/schemas'],
-    }),
-    exportTypes: ExportTypesSchema,
-  }),
-  Schema.Struct({
-    split: Schema.Literal(false)
-      .pipe(Schema.withDecodingDefault(Effect.succeed(false)))
-      .annotate({ description: 'Write every entry into a single file (default).' }),
-    output: FileOutputSchema,
-    exportTypes: ExportTypesSchema,
-  }),
-]).annotate({
-  title: 'Component output target',
-  description: 'Where one component kind is written. `split` picks directory or single-file mode.',
-  examples: [
-    { split: false, output: './src/components/responses.ts', exportTypes: false },
-    { split: true, output: './src/components/schemas', exportTypes: false },
-  ],
-})
+  })
+    .check(makeSplitFilter())
+    .annotate({
+      title,
+      description: `Destination for \`components.${section}\`.`,
+      examples: [{ output: example, split: false, exportTypes }],
+    })
+}
 
-/** Component sections that each take their own output target. */
+/** Component sections that each take their own output target, in hono-takibi's order. */
 const COMPONENT_KINDS = [
   'schemas',
-  'parameters',
-  'headers',
   'responses',
-  'requestBodies',
+  'parameters',
   'examples',
+  'requestBodies',
+  'headers',
   'securitySchemes',
   'links',
   'callbacks',
@@ -136,34 +157,74 @@ const ConfigSchema = Schema.Struct({
         FileOutputSchema.annotate({
           title: 'Single-file components output',
           description:
-            'Every component kind in one file. Mutually exclusive with the per-kind fields below.',
+            'Every component section in one file. Mutually exclusive with the per-type fields below. A directory is normalized to `<dir>/index.ts`.',
         }),
       ),
-      schemas: Schema.optionalKey(ComponentOutputSchema),
-      parameters: Schema.optionalKey(ComponentOutputSchema),
-      headers: Schema.optionalKey(ComponentOutputSchema),
-      responses: Schema.optionalKey(ComponentOutputSchema),
-      requestBodies: Schema.optionalKey(ComponentOutputSchema),
-      examples: Schema.optionalKey(ComponentOutputSchema),
-      securitySchemes: Schema.optionalKey(ComponentOutputSchema),
-      links: Schema.optionalKey(ComponentOutputSchema),
-      callbacks: Schema.optionalKey(ComponentOutputSchema),
-      pathItems: Schema.optionalKey(ComponentOutputSchema),
-      mediaTypes: Schema.optionalKey(ComponentOutputSchema),
+      schemas: Schema.optionalKey(
+        makeTypedComponentOutput('Schemas output', 'schemas', './src/components/schemas', true),
+      ),
+      responses: Schema.optionalKey(
+        makeComponentOutput('Responses output', 'responses', './src/components/responses.ts'),
+      ),
+      parameters: Schema.optionalKey(
+        makeTypedComponentOutput(
+          'Parameters output',
+          'parameters',
+          './src/components/parameters.ts',
+          false,
+        ),
+      ),
+      examples: Schema.optionalKey(
+        makeComponentOutput('Examples output', 'examples', './src/components/examples.ts'),
+      ),
+      requestBodies: Schema.optionalKey(
+        makeComponentOutput(
+          'Request bodies output',
+          'requestBodies',
+          './src/components/requestBodies.ts',
+        ),
+      ),
+      headers: Schema.optionalKey(
+        makeTypedComponentOutput('Headers output', 'headers', './src/components/headers.ts', false),
+      ),
+      securitySchemes: Schema.optionalKey(
+        makeComponentOutput(
+          'Security schemes output',
+          'securitySchemes',
+          './src/components/securitySchemes.ts',
+        ),
+      ),
+      links: Schema.optionalKey(
+        makeComponentOutput('Links output', 'links', './src/components/links.ts'),
+      ),
+      callbacks: Schema.optionalKey(
+        makeComponentOutput('Callbacks output', 'callbacks', './src/components/callbacks.ts'),
+      ),
+      pathItems: Schema.optionalKey(
+        makeComponentOutput('Path items output', 'pathItems', './src/components/pathItems.ts'),
+      ),
+      mediaTypes: Schema.optionalKey(
+        makeTypedComponentOutput(
+          'Media types output',
+          'mediaTypes',
+          './src/components/mediaTypes.ts',
+          false,
+        ),
+      ),
     })
       .check(
         Schema.makeFilter(
           (v) => v.output === undefined || !COMPONENT_KINDS.some((k) => v[k] !== undefined),
           {
             message:
-              'components.output (one file for every component) excludes per-kind outputs (schemas, responses, ...)',
+              'components.output is mutually exclusive with per-type component outputs (schemas, responses, ...). Use output for single-file mode, or per-type fields for split mode.',
           },
         ),
       )
       .annotate({
         title: 'Components output',
         description:
-          'Either `output` for one file, or per-kind fields that each get their own target. Schemas default to components/index.ts next to the router directory; the other kinds are only written when configured.',
+          'Destination for `components`. Either `output` for one file, or per-type fields that each get their own target. Schemas default to components/index.ts next to the router directory; the other sections are only written when configured.',
       }),
   ),
   type: Schema.optionalKey(
@@ -180,9 +241,9 @@ const ConfigSchema = Schema.Struct({
 })
   .check(
     // Two outputs aimed at one path is silent data loss, not a merge: every file is written
-    // concurrently, so whichever finishes last survives. Compared after decoding, where a
-    // directory `output` has already become `<dir>/index.ts` and `./a.ts` and `a.ts` are the
-    // same path. The router directory claims its index.ts, where the `appRouter` goes. The
+    // concurrently, so whichever finishes last survives. A component directory that is not
+    // split is compared as its `index.ts`, and `./a.ts` and `a.ts` are the same path. The
+    // router directory claims its index.ts, where the `appRouter` goes. The
     // filter takes no `message` annotation: since effect 4.0.6 one replaces the sentence
     // returned here, which names the two fields.
     Schema.makeFilter((v) => {
@@ -190,7 +251,7 @@ const ConfigSchema = Schema.Struct({
         ['output', posix.join(v.output, 'index.ts')],
         ['components.output', v.components?.output],
         ...COMPONENT_KINDS.map(
-          (kind) => [`components.${kind}.output`, v.components?.[kind]?.output] as const,
+          (kind) => [`components.${kind}.output`, componentFile(v.components?.[kind])] as const,
         ),
         ['type.output', v.type?.output],
       ]
@@ -213,7 +274,18 @@ const ConfigSchema = Schema.Struct({
       'Everything `openapi-to-trpc` generates from one OpenAPI or TypeSpec document. Only `input` is required.',
   })
 
-/** A validated config: every default filled in and every output path normalized. */
+/**
+ * The file a component target writes, or for a split one its directory: an unsplit directory
+ * is its `index.ts`.
+ */
+function componentFile(target: { readonly output: string; readonly split: boolean } | undefined) {
+  if (target === undefined) return undefined
+  return target.split || target.output.endsWith('.ts')
+    ? target.output
+    : posix.join(target.output, 'index.ts')
+}
+
+/** A validated config: every default filled in. */
 export type Config = typeof ConfigSchema.Type
 
 /**
