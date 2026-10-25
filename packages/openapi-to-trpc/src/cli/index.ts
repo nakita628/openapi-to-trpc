@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 
 import { Console, Effect, FileSystem, Option, Runtime, Schema } from 'effect'
-import { Argument, CliError, CliOutput, Command, Flag } from 'effect/unstable/cli'
+import { Argument, CliError, CliOutput, Command, Flag } from 'effect/cli'
 
 const COMMAND_NAME = 'openapi-to-trpc'
 
@@ -113,7 +113,7 @@ function generate(args: Command.Command.Config.Infer<typeof commandLine>) {
 
 /**
  * The `openapi-to-trpc` command: parsing, validation, `--help`, `--version` and shell
- * completions are owned by `effect/unstable/cli`, {@link generate} is the rest.
+ * completions are owned by `effect/cli`, {@link generate} is the rest.
  */
 const command = Command.make(COMMAND_NAME, commandLine, generate).pipe(
   Command.withDescription('Generate tRPC routers from OpenAPI or TypeSpec'),
@@ -138,14 +138,15 @@ const command = Command.make(COMMAND_NAME, commandLine, generate).pipe(
 )
 
 /**
- * Runs `openapi-to-trpc` against an argument list.
+ * Runs `openapi-to-trpc` against the command line `Stdio` provides: `NodeServices.layer` reads
+ * it from the process, a test supplies its own through `Stdio.layerTest`.
  *
  * `entryUrl` is the `import.meta.url` of the executable, and `--version` is read from the
  * `package.json` beside it: `src/index.ts` and the `dist/cli.js` it is packed into both sit
  * one directory below the manifest. A manifest that is missing or malformed is a broken
  * install, so it fails — through the error channel, as a sentence.
  */
-export function cli(argv: readonly string[], entryUrl: string) {
+export function cli(entryUrl: string) {
   return Effect.gen(function* () {
     const manifestPath = fileURLToPath(new URL('../package.json', entryUrl))
     const fs = yield* FileSystem.FileSystem
@@ -157,12 +158,12 @@ export function cli(argv: readonly string[], entryUrl: string) {
     const { version } = yield* Schema.decodeUnknownEffect(
       Schema.Struct({ version: Schema.String }),
     )(manifest)
-    return yield* Command.runWith(command, { version })(argv)
+    return yield* Command.run(command, { version })
   }).pipe(Effect.catchIf((error) => !CliError.isCliError(error), reportBrokenInstall))
 }
 
 /**
- * The version could not be read. `Command.runWith` renders the errors raised inside the
+ * The version could not be read. `Command.run` renders the errors raised inside the
  * command, but this one is raised before it runs, so it is rendered here through the same
  * formatter and marked as already reported, so `runMain` does not print it a second time.
  */

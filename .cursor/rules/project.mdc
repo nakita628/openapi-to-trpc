@@ -31,12 +31,15 @@ test/                         integration suite: generates every library, runs t
   specs/                      the OpenAPI documents the suite generates from
   setup.ts                    Vitest global setup: writes __generated__ before the suite runs
   vite.config.ts              the suite's own test and lint configuration
+apps/todo/                    example: a todo API generated from openapi.yaml, with hand-written
+                              resolvers, a server and the generated client; its generated files
+                              are committed, as a user commits them
 scripts/actionlint.ts         downloads a pinned actionlint, verifies its checksum, runs it
 scripts/zizmor.ts             downloads a pinned zizmor (workflow security audit), verifies it, runs it
 vite.config.ts                formatting only (printWidth 100, single quotes, no semicolons);
                               every workspace inherits it
 renovate.json                 dependency updates (Saturdays, Asia/Tokyo); see the CI rule
-.github/workflows/test.yml    CI (Test): build, both test suites, then `vp run check`
+.github/workflows/test.yml    CI (Test): build, every test suite, then `vp run check`
 .github/workflows/lint.yml    CI (Lint): `vp run lint`
 .github/workflows/release.yml after Test on main: tag, npm publish, GitHub release
 ```
@@ -51,7 +54,7 @@ Run these from the repository root.
 | Everything CI checks (format, oxlint and type checks, then every linter) | `pnpm check` |
 | Autofix formatting, oxlint, markdownlint and textlint | `pnpm fix` |
 | Linters (markdownlint, textlint, cspell, secretlint, actionlint, zizmor) | `pnpm lint` |
-| Both test suites (package, then `test/`) | `pnpm test` |
+| Every test suite (package, `test/`, then `apps/*`) | `pnpm test` |
 | Build `dist` | `pnpm build` |
 | One test file | `pnpm --filter ./packages/openapi-to-trpc exec vp test src/<path>.test.ts` |
 
@@ -60,6 +63,9 @@ Run these from the repository root.
   even though it also type-checks.
 - The `test/` suite imports the package source directly, so it needs no build. Its global setup
   regenerates `test/__generated__` on every run.
+- `apps/todo` is regenerated with its own `pnpm generate`, which runs the built CLI: `pnpm build`
+  first. A change to the generated output updates the files it commits in the same change; its
+  tests run against them.
 - `scripts/*.ts` run on Node's own TypeScript support, so they need Node 24 (CI uses it).
 
 ## Definition of done

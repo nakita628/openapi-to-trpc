@@ -50,8 +50,9 @@ fixture out most clearly. Two more are specific to this repository:
 
 ## The CLI suite
 
-- `runCli(argv)` in `src/cli/index.test.ts` runs the command the way the entry does and records
-  stdout and stderr through a replaced `Console`, with the ANSI escapes stripped.
+- `runCli(argv)` in `src/cli/index.test.ts` runs the command the way the entry does — the
+  arguments come from `Stdio`, supplied by `Stdio.layerTest` — and records stdout and stderr
+  through a replaced `Console`, with the ANSI escapes stripped. Nothing reads `process.argv`.
 - The CLI Reference block in `packages/openapi-to-trpc/README.md` is compared with `--help`;
   after changing a flag or an example, paste the new `--help` output into the README.
 - The generator pipeline is loaded lazily; a test reads the CLI source to keep `config` and

@@ -12,6 +12,7 @@ npm install -D openapi-to-trpc
 - One tRPC router per resource (first path segment) plus an `appRouter`
 - Component output as one file, one file per kind, or one file per entry
 - Router type helpers (`RouterInputs` / `RouterOutputs`)
+- A typed tRPC client (`createTRPCClient<typeof appRouter>`)
 - Regeneration keeps your implemented resolvers
 
 ## Quick Start
@@ -98,6 +99,7 @@ export type UserSchema = z.infer<typeof UserSchema>
 // src/routes/users.ts
 import { initTRPC, TRPCError } from '@trpc/server'
 import * as z from 'zod'
+
 import { UserSchema } from '../components'
 
 const t = initTRPC.create()
@@ -115,6 +117,7 @@ export const usersRouter = t.router({
 ```ts
 // src/routes/index.ts
 import { initTRPC } from '@trpc/server'
+
 import { usersRouter } from './users'
 
 const t = initTRPC.create()
@@ -152,7 +155,7 @@ GLOBAL FLAGS
   --help, -h                                                          Show help information
   --version, -v                                                       Show version information
   --wizard                                                            Start wizard mode for a command
-  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 
 EXAMPLES
@@ -193,48 +196,107 @@ export default defineConfig({
   // oxfmt options for the generated code
   // format: { printWidth: 100 },
 
-  // Components (OpenAPI Components Object). Either every kind into one file:
+  // Components (OpenAPI Components Object). Either every section into one file:
   // components: { output: 'src/components.ts' },
   //
-  // or each kind into its own output. `split: true` makes `output` a directory with one file
-  // per entry plus an index.ts barrel. `exportTypes: true` adds inferred types to parameters
-  // and headers (schemas always export theirs). Schemas default to components/index.ts next
-  // to the router directory; the other kinds are only written when configured.
+  // or each section into its own output: a `.ts` file, or a directory — one file per entry plus
+  // an index.ts barrel with `split: true`, its index.ts without. Schemas default to
+  // components/index.ts next to the router directory; the other sections are only written when
+  // configured. `exportTypes` adds the inferred types to the sections whose entries are
+  // validators: schemas (on by default), parameters, headers and mediaTypes (OpenAPI 3.2).
   components: {
-    schemas: { output: 'src/components/schemas', split: true },
-    parameters: { output: 'src/components/parameters.ts', exportTypes: true },
-    headers: { output: 'src/components/headers.ts' },
+    schemas: { output: 'src/components/schemas', split: true, exportTypes: true },
     responses: { output: 'src/components/responses.ts' },
-    requestBodies: { output: 'src/components/requestBodies.ts' },
+    parameters: { output: 'src/components/parameters.ts', exportTypes: true },
     examples: { output: 'src/components/examples.ts' },
+    requestBodies: { output: 'src/components/requestBodies.ts' },
+    headers: { output: 'src/components/headers.ts' },
     securitySchemes: { output: 'src/components/securitySchemes.ts' },
     links: { output: 'src/components/links.ts' },
     callbacks: { output: 'src/components/callbacks.ts' },
     pathItems: { output: 'src/components/pathItems.ts' },
+    mediaTypes: { output: 'src/components/mediaTypes.ts' },
   },
 
   // Router type helpers (`RouterInputs` / `RouterOutputs`)
   type: { output: 'src/types.ts' },
+
+  // Typed tRPC client, see below
+  client: { output: 'src/client.ts', baseUrl: '/trpc' },
 })
 ```
 
 Recursive schemas (self or mutual `$ref` cycles) are supported for every validator library.
 
-## Setting up the tRPC client
+## Client
 
-The client is yours to create — the URL, headers, transformer and `fetch` are runtime concerns:
+A `client` block generates the tRPC client of the `appRouter`; you never create one.
+
+```ts
+export default defineConfig({
+  input: 'openapi.yaml',
+  client: { output: 'src/client.ts', baseUrl: '/trpc' },
+})
+```
 
 ```ts
 // src/client.ts
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
+
 import type { appRouter } from './routes'
 
 export const client = createTRPCClient<typeof appRouter>({
-  links: [httpBatchLink({ url: '/api/trpc' })],
+  links: [httpBatchLink({ url: '/trpc' })],
 })
 ```
 
-Use `import type` so server code never reaches the client bundle, then call `client.users.getUsersUserId.query({ userId })`.
+Then call `client.users.getUsersUserId.query({ userId })`. Only the type of the router is imported, so no server code reaches the client bundle. The file is rewritten on every run.
+
+| Option               | Sets                     | Meaning                                                 |
+| -------------------- | ------------------------ | ------------------------------------------------------- |
+| `client.output`      | the file                 | A `.ts` file.                                           |
+| `client.baseUrl`     | `httpBatchLink({ url })` | Where the tRPC handler is mounted, see below.           |
+| `client.import`      | `from './routes'`        | Where the router type comes from. Only across packages. |
+| `client.credentials` | `fetch` of the link      | Send cookies with every request, see below.             |
+
+### Base URL
+
+`'/'` by default. A same-origin path (`'/trpc'`, `'/api/trpc'`) is written into the file; an absolute URL differs between environments, so it comes from the environment, with no fallback:
+
+| `baseUrl`                                   | Generated                       |
+| ------------------------------------------- | ------------------------------- |
+| `'/trpc'`                                   | `'/trpc'`                       |
+| `{ env: 'VITE_API_URL' }`                   | `import.meta.env.VITE_API_URL!` |
+| `{ env: 'API_URL', source: 'process.env' }` | `process.env.API_URL!`          |
+| `{ env: 'API_URL', import: '@/env' }`       | `env.API_URL` from `@/env`      |
+
+With `import`, the export is `env` unless `name` says otherwise:
+
+```ts
+baseUrl: { env: 'API_URL', import: '../config', name: 'config' } // config.API_URL
+```
+
+### Cookies
+
+A client of an API on another origin needs `credentials: 'include'` to send its cookies. `client.credentials` writes it into the link's `fetch`, as the [tRPC guide](https://trpc.io/docs/client/cors) does:
+
+```ts
+client: { output: 'src/client.ts', credentials: 'include' }
+```
+
+```ts
+httpBatchLink({
+  url: '/',
+  fetch: (input, { signal, ...init } = {}) =>
+    fetch(input, { ...init, ...(signal && { signal }), credentials: 'include' }),
+})
+```
+
+It is the `credentials` of `fetch` — `'include'`, `'same-origin'` or `'omit'` — and nothing is written when it is left out.
+
+## Example
+
+[`apps/todo`](https://github.com/nakita628/openapi-to-trpc/tree/main/apps/todo) is a todo API generated from an OpenAPI document: routers with hand-written resolvers, a tRPC server and the generated client, with tests.
 
 ## Contributing
 
@@ -245,7 +307,7 @@ Lint and tests run from the repository root:
 ```bash
 pnpm check   # vp fmt, oxlint and type checks per workspace, then `pnpm lint`
 pnpm lint    # markdownlint, textlint, cspell, secretlint, then actionlint and zizmor
-pnpm test    # unit tests, then the generated routers of every validator library
+pnpm test    # unit tests, the generated routers of every validator library, then apps/todo
 pnpm build   # packs packages/openapi-to-trpc into dist
 ```
 

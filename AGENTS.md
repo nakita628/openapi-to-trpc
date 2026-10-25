@@ -20,7 +20,7 @@ Instructions for coding agents working on this repository. The full rules live i
 pnpm install --frozen-lockfile
 pnpm fix     # formatting, oxlint, markdownlint and textlint autofixes
 pnpm check   # format check, oxlint and type checks, then every linter
-pnpm test    # the package suite, then the generated routers of every validator library
+pnpm test    # the package suite, the generated routers of every validator library, apps/todo
 ```
 
 `pnpm check` and `pnpm test` must pass before a change is finished — they are what CI runs.

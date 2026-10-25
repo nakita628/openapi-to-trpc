@@ -1,0 +1,122 @@
+openapi: 3.1.0
+info:
+  title: Todo API
+  version: 1.0.0
+paths:
+  /todos:
+    get:
+      summary: List todos
+      parameters:
+        - name: done
+          in: query
+          required: false
+          description: Only the todos that are done (true) or still open (false).
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: The todos, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Todo'
+    post:
+      summary: Create a todo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTodo'
+      responses:
+        '201':
+          description: The created todo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Todo'
+  /todos/{todoId}:
+    parameters:
+      - name: todoId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      summary: Get a todo
+      responses:
+        '200':
+          description: The todo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Todo'
+        '404':
+          description: No todo has this id.
+    patch:
+      summary: Update a todo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTodo'
+      responses:
+        '200':
+          description: The updated todo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Todo'
+        '404':
+          description: No todo has this id.
+    delete:
+      summary: Delete a todo
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          description: No todo has this id.
+components:
+  schemas:
+    Todo:
+      type: object
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+        done:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - done
+        - createdAt
+    CreateTodo:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+      required:
+        - title
+    UpdateTodo:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+        done:
+          type: boolean

@@ -48,6 +48,117 @@ describe('makeFiles', () => {
   })
 })
 
+describe('makeFiles components', () => {
+  const openapi = {
+    openapi: '3.2.0',
+    info: { title: 'components', version: '1.0.0' },
+    paths: {},
+    components: {
+      schemas: {
+        user: { type: 'object', properties: { id: { type: 'string' } } },
+        User: { type: 'object', properties: { name: { type: 'string' } } },
+      },
+      responses: {
+        Named: {
+          description: 'the second schema',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } },
+        },
+      },
+      mediaTypes: { Text: { schema: { type: 'string' } } },
+    },
+  } as const
+  const files = makeFiles(
+    openapi,
+    config({
+      components: {
+        schemas: { output: 'src/components/schemas.ts' },
+        responses: { output: 'src/components/responses.ts' },
+        mediaTypes: { output: 'src/components/mediaTypes.ts', exportTypes: true },
+      },
+    }),
+  )
+  const code = (file: string) => files.find((f) => f.path.endsWith(file))?.code
+
+  it('points a $ref at the schema that took a suffixed identifier', () => {
+    expect(code('responses.ts')).toContain('schema:User2Schema')
+    expect(code('responses.ts')).toContain("import {User2Schema} from './schemas'")
+  })
+
+  it('leaves the schema types out when schemas.exportTypes is false', () => {
+    const [schemas] = makeFiles(
+      openapi,
+      config({ components: { schemas: { output: 'src/schemas.ts', exportTypes: false } } }),
+    )
+    expect(schemas?.code).not.toContain('export type')
+  })
+
+  it('writes components.mediaTypes with their inferred types', () => {
+    expect(code('mediaTypes.ts')).toBe(
+      [
+        "import * as z from 'zod'",
+        '',
+        'export const TextMediaTypeSchema=z.string()',
+        '',
+        'export type TextMediaTypeSchema=z.infer<typeof TextMediaTypeSchema>',
+      ].join('\n'),
+    )
+  })
+})
+
+/** The generated client file for `client`, written next to the default router directory. */
+async function clientCode(client: object) {
+  const openapi = await parseOpenAPI(input)
+  if (!openapi.ok) throw new Error(openapi.error)
+  return makeFiles(openapi.value, config({ client: { output: 'src/client.ts', ...client } }))
+    .find((file) => file.path.endsWith('client.ts'))
+    ?.code.split('\n')
+}
+
+describe('makeFiles client', () => {
+  it('creates the client on the router type at a same-origin path', async () => {
+    expect(await clientCode({})).toStrictEqual([
+      "import {createTRPCClient,httpBatchLink} from '@trpc/client'",
+      '',
+      "import type {appRouter} from './routes'",
+      '',
+      'export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:"/"})]})',
+    ])
+  })
+
+  it.each([
+    [{ baseUrl: '/trpc' }, '"/trpc"', []],
+    [
+      { baseUrl: { env: 'VITE_API_URL' } },
+      'baseUrl',
+      ['const baseUrl=import.meta.env.VITE_API_URL!'],
+    ],
+    [
+      { baseUrl: { env: 'API_URL', source: 'process.env' } },
+      'baseUrl',
+      ['const baseUrl=process.env.API_URL!'],
+    ],
+    [
+      { baseUrl: { env: 'API_URL', import: '@/env' } },
+      'env.API_URL',
+      ["import {env} from '@/env'"],
+    ],
+  ])('reads %j into the link url', async (client, url, lines) => {
+    const code = await clientCode(client)
+    expect(code?.at(-1)).toBe(
+      `export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:${url}})]})`,
+    )
+    expect(code).toStrictEqual(expect.arrayContaining(lines))
+  })
+
+  it('imports the router type from client.import and passes credentials through fetch', async () => {
+    const code = await clientCode({ import: '@packages/server', credentials: 'include' })
+    expect(code).toContain("import type {appRouter} from '@packages/server'")
+    expect(code?.at(-1)).toBe(
+      'export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:"/",fetch:(input,{signal,...init}={})=>fetch(input,{...init,...(signal&&{signal}),credentials:"include"})})]})',
+    )
+  })
+})
+
 describe('openapiToTrpc', () => {
   it('keeps an implemented resolver when regenerating', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openapi-to-trpc-'))

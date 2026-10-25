@@ -27,19 +27,20 @@ second. A new `src/` directory gets its own override.
 | Directory | Owns | Never does |
 | --- | --- | --- |
 | `config/` | the config schema, `defineConfig`, `parseConfig`, `readConfig`, `ConfigError` | import anything internal |
-| `generator/` | code builders: `components.ts` (every component kind, imports), `router.ts` (procedures, routers, `appRouter`, router types), `library.ts` (what each validator library needs on top of oas-truth) — string in, string out | touch the filesystem or run an Effect |
+| `generator/` | code builders: `components.ts` (every component kind, imports), `router.ts` (procedures, routers, `appRouter`, router types), `library.ts` (what each validator library needs on top of oas-truth), `client.ts` (the typed tRPC client) — string in, string out | touch the filesystem or run an Effect |
 | `merge/` | `mergeRouter`: a regenerated router merged into what the user already wrote | know about OpenAPI |
 | `core/` | `makeFiles` (config + document → every file, pure) and `openapiToTrpc` (the Effect program: parse, build, merge, format, write) | parse the command line |
-| `cli/` | the `openapi-to-trpc` command on `effect/unstable/cli` | generator logic |
+| `cli/` | the `openapi-to-trpc` command on `effect/cli` | generator logic |
 
 ## What comes from oas-truth
 
 `parseOpenAPI`, `makeAdapter` (the zod / valibot / arktype / effect expression builders), the
-`make*Code` generators for every non-schema component kind, `makeSchemaDeclarations` /
-`makeSchemasCode` for `components.schemas` and the naming helpers (`toIdentifierPascalCase`,
-`schemaRefToName`, `makeSafeKey`, `isRecord`) are imported from `oas-truth`. Do not reimplement
-them here: a gap in them is fixed in oas-truth, or worked around in `generator/library.ts` with a
-comment saying why. `schema-to-library` is oas-truth's dependency, not this package's.
+`make*Declarations` builders for every non-schema component kind (one declaration per entry,
+which a target bundles into one file or splits), `makeSchemaDeclarations` for
+`components.schemas` and the naming helpers (`makeSchemaIdentifiers`, `declarationFileName`,
+`toIdentifierPascalCase`, `schemaRefToName`, `makeSafeKey`, `isRecord`) are imported from
+`oas-truth`. Do not reimplement them here: a gap in them is fixed in oas-truth, or worked
+around in `generator/library.ts` with a comment saying why. `schema-truth` is oas-truth's dependency, not this package's.
 
 ## Output that holds the user's code
 
@@ -56,7 +57,7 @@ other imports and code (a customized `initTRPC`, helpers).
   object, the resolvers and the `.input()` / `.output()` calls; add a merge test when the emitted
   structure changes.
 
-Every other output (`<output>/index.ts`, the components, the router types) is the generator's
+Every other output (`<output>/index.ts`, the components, the router types, the client) is the generator's
 and is rewritten wholesale.
 
 ## The generated code

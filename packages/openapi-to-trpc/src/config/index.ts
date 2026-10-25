@@ -23,7 +23,7 @@ const DocumentPathSchema = Schema.declare<
 
 const TypeScriptPathSchema = Schema.declare<`${string}.ts`>(
   Schema.is(Schema.TemplateLiteral([Schema.String, '.ts'])),
-  { message: 'must be a .ts file' },
+  { message: 'must be .ts file' },
 )
 
 const DirectorySchema = Schema.String.check(
@@ -45,61 +45,166 @@ const FileOutputSchema = Schema.String.pipe(
   examples: ['./src/components.ts', './src/components'],
 })
 
-const ExportTypesSchema = Schema.Boolean.pipe(
-  Schema.withDecodingDefault(Effect.succeed(false)),
-).annotate({
-  description:
-    'Also export the type inferred from each entry (parameters, headers; schemas always do).',
-})
+/** A JavaScript identifier: the name of an export the generated code imports. */
+const IDENTIFIER_PATTERN = /^[A-Za-z_$][\w$]*$/u
+
+/** A module specifier written into generated code as it stands. */
+const ModuleSpecifierSchema = Schema.String.check(
+  Schema.isPattern(/^[^\s'"`\\]+$/u, {
+    message: 'must be a module specifier, with no whitespace or quotes',
+  }),
+)
 
 /**
- * One component kind's output target. `split: true` writes one file per entry into a
- * directory, anything else a single file.
- *
- * `Schema.Union` resolves members in order and each member pins `split` to a literal, so a
- * member is only reachable through its own discriminant — the failure reported is the one
- * inside the matching branch, not a union-wide "no member matched".
+ * One component section's output target, the shape hono-takibi gives it: `output` is a `.ts`
+ * file, or a directory — one file per entry plus an index.ts barrel when `split` is true, its
+ * `index.ts` when not.
  */
-const ComponentOutputSchema = Schema.Union([
-  Schema.Struct({
-    split: Schema.Literal(true).annotate({
-      description: 'Write one file per entry into `output`, plus an index.ts barrel.',
+function makeComponentFields() {
+  return {
+    output: Schema.String.annotate({
+      title: 'Output target',
+      description:
+        'A `.ts` file, or a directory — which takes one file per entry when `split` is true, and its `index.ts` when not.',
     }),
-    output: DirectorySchema.annotate({
-      title: 'Output directory',
-      examples: ['./src/components/schemas'],
+    split: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
+      description: 'Write one file per entry into `output` rather than a single file.',
     }),
-    exportTypes: ExportTypesSchema,
-  }),
-  Schema.Struct({
-    split: Schema.Literal(false)
-      .pipe(Schema.withDecodingDefault(Effect.succeed(false)))
-      .annotate({ description: 'Write every entry into a single file (default).' }),
-    output: FileOutputSchema,
-    exportTypes: ExportTypesSchema,
-  }),
-]).annotate({
-  title: 'Component output target',
-  description: 'Where one component kind is written. `split` picks directory or single-file mode.',
-  examples: [
-    { split: false, output: './src/components/responses.ts', exportTypes: false },
-    { split: true, output: './src/components/schemas', exportTypes: false },
-  ],
-})
+  }
+}
 
-/** Component sections that each take their own output target. */
+function makeSplitFilter() {
+  return Schema.makeFilter(
+    (v: { readonly split: boolean; readonly output: string }) =>
+      !(v.split && v.output.endsWith('.ts')),
+    { message: 'split mode requires directory, not .ts file' },
+  )
+}
+
+/** A section whose entries are data (responses, examples, ...): no inferred types to export. */
+function makeComponentOutput(title: string, section: string, example: string) {
+  return Schema.Struct(makeComponentFields())
+    .check(makeSplitFilter())
+    .annotate({
+      title,
+      description: `Destination for \`components.${section}\`.`,
+      examples: [{ output: example, split: false }],
+    })
+}
+
+/**
+ * A section whose entries are validators (schemas, parameters, headers, mediaTypes), which can
+ * also export the type each one infers. Schemas export theirs unless told not to.
+ */
+function makeTypedComponentOutput(
+  title: string,
+  section: string,
+  example: string,
+  exportTypes: boolean,
+) {
+  return Schema.Struct({
+    ...makeComponentFields(),
+    exportTypes: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(exportTypes)),
+    ).annotate({
+      description: `Also export the TypeScript type inferred from each generated schema (default ${String(exportTypes)}).`,
+    }),
+  })
+    .check(makeSplitFilter())
+    .annotate({
+      title,
+      description: `Destination for \`components.${section}\`.`,
+      examples: [{ output: example, split: false, exportTypes }],
+    })
+}
+
+/** Component sections that each take their own output target, in hono-takibi's order. */
 const COMPONENT_KINDS = [
   'schemas',
-  'parameters',
-  'headers',
   'responses',
-  'requestBodies',
+  'parameters',
   'examples',
+  'requestBodies',
+  'headers',
   'securitySchemes',
   'links',
   'callbacks',
   'pathItems',
+  'mediaTypes',
 ] as const
+
+/** Where the client finds the tRPC endpoint: a same-origin path, or the environment. */
+const BaseUrlSchema = Schema.Union([
+  // An absolute URL differs between environments, so it is read from the environment instead;
+  // a path is the same everywhere the client is served from the origin of the API.
+  Schema.String.check(
+    Schema.isPattern(/^\/[^\s'"`\\]*$/u, {
+      message:
+        "must be a same-origin path such as '/trpc': read an absolute URL from the environment with { env } or { env, import }",
+    }),
+  ),
+  // An object that names a module is read as one: the member that takes `import` stands
+  // first, since the other would take the object as well and leave `import` out.
+  Schema.Struct({
+    env: Schema.String.check(
+      Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u, {
+        message: 'must be the name of an environment variable',
+      }),
+    ).annotate({
+      title: 'Environment variable',
+      description:
+        'The property of the imported environment object that holds the endpoint URL: `API_URL` for `env.API_URL`.',
+      examples: ['API_URL'],
+    }),
+    import: ModuleSpecifierSchema.annotate({
+      title: 'Import specifier',
+      description:
+        'The module of yours that exports the environment object, written into the client file as it stands: `@/env`, `../env`. Such a module validates its exports, so no fallback is written.',
+      examples: ['@/env', '../env'],
+    }),
+    name: Schema.String.check(
+      Schema.isPattern(IDENTIFIER_PATTERN, { message: 'must be a JavaScript identifier' }),
+    )
+      .pipe(Schema.withDecodingDefault(Effect.succeed('env')))
+      .annotate({
+        title: 'Environment export name',
+        description:
+          'The named export of `import` that is the environment object, `env` when left out.',
+        examples: ['env'],
+      }),
+  }),
+  Schema.Struct({
+    env: Schema.String.check(
+      Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u, {
+        message: 'must be the name of an environment variable',
+      }),
+    ).annotate({
+      title: 'Environment variable',
+      description:
+        'The environment variable the endpoint URL is read from when the client is created, asserted present with `!`: `VITE_API_URL` for a Vite build, `API_URL` for Node.js.',
+      examples: ['VITE_API_URL', 'API_URL'],
+    }),
+    source: Schema.Literals(['import.meta.env', 'process.env'])
+      .pipe(Schema.withDecodingDefault(Effect.succeed('import.meta.env')))
+      .annotate({
+        title: 'Where the variable is read from',
+        description:
+          '`import.meta.env` (the default) for code a bundler such as Vite builds, `process.env` for code Node.js runs.',
+        examples: ['import.meta.env', 'process.env'],
+      }),
+  }),
+])
+  .pipe(Schema.withDecodingDefault(Effect.succeed('/')))
+  .annotate({
+    title: 'Base URL',
+    description:
+      "The `url` of the client's `httpBatchLink`: where the tRPC handler is mounted. A same-origin path (`/` by default, `/trpc`, `/api/trpc`) is written into the file. `{ env }` reads an environment variable when the client is created, `import.meta.env.VITE_API_URL!` or `process.env.API_URL!` with `source: 'process.env'`; `{ env, import }` reads a property of an environment object a module of yours exports. Neither has a fallback.",
+    examples: [
+      '/trpc',
+      { env: 'VITE_API_URL', source: 'import.meta.env' },
+      { env: 'API_URL', import: '@/env', name: 'env' },
+    ],
+  })
 
 const ConfigSchema = Schema.Struct({
   input: DocumentPathSchema.annotate({
@@ -135,33 +240,74 @@ const ConfigSchema = Schema.Struct({
         FileOutputSchema.annotate({
           title: 'Single-file components output',
           description:
-            'Every component kind in one file. Mutually exclusive with the per-kind fields below.',
+            'Every component section in one file. Mutually exclusive with the per-type fields below. A directory is normalized to `<dir>/index.ts`.',
         }),
       ),
-      schemas: Schema.optionalKey(ComponentOutputSchema),
-      parameters: Schema.optionalKey(ComponentOutputSchema),
-      headers: Schema.optionalKey(ComponentOutputSchema),
-      responses: Schema.optionalKey(ComponentOutputSchema),
-      requestBodies: Schema.optionalKey(ComponentOutputSchema),
-      examples: Schema.optionalKey(ComponentOutputSchema),
-      securitySchemes: Schema.optionalKey(ComponentOutputSchema),
-      links: Schema.optionalKey(ComponentOutputSchema),
-      callbacks: Schema.optionalKey(ComponentOutputSchema),
-      pathItems: Schema.optionalKey(ComponentOutputSchema),
+      schemas: Schema.optionalKey(
+        makeTypedComponentOutput('Schemas output', 'schemas', './src/components/schemas', true),
+      ),
+      responses: Schema.optionalKey(
+        makeComponentOutput('Responses output', 'responses', './src/components/responses.ts'),
+      ),
+      parameters: Schema.optionalKey(
+        makeTypedComponentOutput(
+          'Parameters output',
+          'parameters',
+          './src/components/parameters.ts',
+          false,
+        ),
+      ),
+      examples: Schema.optionalKey(
+        makeComponentOutput('Examples output', 'examples', './src/components/examples.ts'),
+      ),
+      requestBodies: Schema.optionalKey(
+        makeComponentOutput(
+          'Request bodies output',
+          'requestBodies',
+          './src/components/requestBodies.ts',
+        ),
+      ),
+      headers: Schema.optionalKey(
+        makeTypedComponentOutput('Headers output', 'headers', './src/components/headers.ts', false),
+      ),
+      securitySchemes: Schema.optionalKey(
+        makeComponentOutput(
+          'Security schemes output',
+          'securitySchemes',
+          './src/components/securitySchemes.ts',
+        ),
+      ),
+      links: Schema.optionalKey(
+        makeComponentOutput('Links output', 'links', './src/components/links.ts'),
+      ),
+      callbacks: Schema.optionalKey(
+        makeComponentOutput('Callbacks output', 'callbacks', './src/components/callbacks.ts'),
+      ),
+      pathItems: Schema.optionalKey(
+        makeComponentOutput('Path items output', 'pathItems', './src/components/pathItems.ts'),
+      ),
+      mediaTypes: Schema.optionalKey(
+        makeTypedComponentOutput(
+          'Media types output',
+          'mediaTypes',
+          './src/components/mediaTypes.ts',
+          false,
+        ),
+      ),
     })
       .check(
         Schema.makeFilter(
           (v) => v.output === undefined || !COMPONENT_KINDS.some((k) => v[k] !== undefined),
           {
             message:
-              'components.output (one file for every component) excludes per-kind outputs (schemas, responses, ...)',
+              'components.output is mutually exclusive with per-type component outputs (schemas, responses, ...). Use output for single-file mode, or per-type fields for split mode.',
           },
         ),
       )
       .annotate({
         title: 'Components output',
         description:
-          'Either `output` for one file, or per-kind fields that each get their own target. Schemas default to components/index.ts next to the router directory; the other kinds are only written when configured.',
+          'Destination for `components`. Either `output` for one file, or per-type fields that each get their own target. Schemas default to components/index.ts next to the router directory; the other sections are only written when configured.',
       }),
   ),
   type: Schema.optionalKey(
@@ -175,36 +321,73 @@ const ConfigSchema = Schema.Struct({
       description: '`RouterInputs` / `RouterOutputs` inferred from the `appRouter`.',
     }),
   ),
+  client: Schema.optionalKey(
+    Schema.Struct({
+      output: TypeScriptPathSchema.annotate({
+        title: 'Client output file',
+        examples: ['./src/client.ts'],
+      }),
+      baseUrl: BaseUrlSchema,
+      import: Schema.optionalKey(
+        ModuleSpecifierSchema.annotate({
+          title: 'App router import specifier',
+          description:
+            'Module the client imports the type of the `appRouter` from. Left out, the router directory is imported relatively. Name the package of the server when the client is written into another package: `@packages/server`.',
+          examples: ['@packages/server', '../server/routes'],
+        }),
+      ),
+      credentials: Schema.optionalKey(
+        Schema.Literals(['include', 'same-origin', 'omit']).annotate({
+          title: 'Credentials',
+          description:
+            "The `credentials` of every request the client sends, written as a `fetch` of the `httpBatchLink` that passes them on: the `RequestCredentials` of `fetch`. `include` sends the cookies to any origin, which a client of an API on another origin needs for a session cookie; `same-origin`, the browser's default, sends them to the origin of the page alone; `omit` sends none. Left out, nothing is written.",
+          examples: ['include'],
+        }),
+      ),
+    }).annotate({
+      title: 'Typed client',
+      description:
+        'The tRPC client of the generated `appRouter`: `createTRPCClient<typeof appRouter>` with an `httpBatchLink`. Only the type of the router is imported, so no server code reaches the client bundle. The file is rewritten on every run.',
+      examples: [
+        { output: './src/client.ts', baseUrl: '/trpc' },
+        {
+          output: './src/client.ts',
+          baseUrl: { env: 'VITE_API_URL', source: 'import.meta.env' },
+          credentials: 'include',
+        },
+      ],
+    }),
+  ),
 })
   .check(
     // Two outputs aimed at one path is silent data loss, not a merge: every file is written
-    // concurrently, so whichever finishes last survives. Compared after decoding, where a
-    // directory `output` has already become `<dir>/index.ts` and `./a.ts` and `a.ts` are the
-    // same path. The router directory claims its index.ts, where the `appRouter` goes.
-    Schema.makeFilter(
-      (v) => {
-        const declared: readonly (readonly [string, string | undefined])[] = [
-          ['output', posix.join(v.output, 'index.ts')],
-          ['components.output', v.components?.output],
-          ...COMPONENT_KINDS.map(
-            (kind) => [`components.${kind}.output`, v.components?.[kind]?.output] as const,
-          ),
-          ['type.output', v.type?.output],
-        ]
-        const seen = new Map<string, string>()
-        for (const [field, output] of declared) {
-          if (output === undefined) continue
-          const key = posix.normalize(output).replace(/\/+$/u, '')
-          const first = seen.get(key)
-          if (first !== undefined) {
-            return `${field} and ${first} both write to ${output}. Give each its own output path.`
-          }
-          seen.set(key, field)
+    // concurrently, so whichever finishes last survives. A component directory that is not
+    // split is compared as its `index.ts`, and `./a.ts` and `a.ts` are the same path. The
+    // router directory claims its index.ts, where the `appRouter` goes. The
+    // filter takes no `message` annotation: since effect 4.0.6 one replaces the sentence
+    // returned here, which names the two fields.
+    Schema.makeFilter((v) => {
+      const declared: readonly (readonly [string, string | undefined])[] = [
+        ['output', posix.join(v.output, 'index.ts')],
+        ['components.output', v.components?.output],
+        ...COMPONENT_KINDS.map(
+          (kind) => [`components.${kind}.output`, componentFile(v.components?.[kind])] as const,
+        ),
+        ['type.output', v.type?.output],
+        ['client.output', v.client?.output],
+      ]
+      const seen = new Map<string, string>()
+      for (const [field, output] of declared) {
+        if (output === undefined) continue
+        const key = posix.normalize(output).replace(/\/+$/u, '')
+        const first = seen.get(key)
+        if (first !== undefined) {
+          return `${field} and ${first} both write to ${output}. Give each its own output path.`
         }
-        return true
-      },
-      { message: 'every output needs its own path' },
-    ),
+        seen.set(key, field)
+      }
+      return true
+    }),
   )
   .annotate({
     title: 'openapi-to-trpc config',
@@ -212,7 +395,18 @@ const ConfigSchema = Schema.Struct({
       'Everything `openapi-to-trpc` generates from one OpenAPI or TypeSpec document. Only `input` is required.',
   })
 
-/** A validated config: every default filled in and every output path normalized. */
+/**
+ * The file a component target writes, or for a split one its directory: an unsplit directory
+ * is its `index.ts`.
+ */
+function componentFile(target: { readonly output: string; readonly split: boolean } | undefined) {
+  if (target === undefined) return undefined
+  return target.split || target.output.endsWith('.ts')
+    ? target.output
+    : posix.join(target.output, 'index.ts')
+}
+
+/** A validated config: every default filled in. */
 export type Config = typeof ConfigSchema.Type
 
 /**
