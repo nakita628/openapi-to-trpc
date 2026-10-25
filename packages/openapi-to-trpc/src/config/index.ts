@@ -55,6 +55,14 @@ const ModuleSpecifierSchema = Schema.String.check(
   }),
 )
 
+/** The name of the package an output is written into, which another package imports it by. */
+const PackageNameSchema = ModuleSpecifierSchema.annotate({
+  title: 'Package name',
+  description:
+    'Module the generated files of other packages import `output` from: the name of the package it is written into. Files in the same package import it relatively, or under `pathAlias`.',
+  examples: ['@packages/components'],
+})
+
 /**
  * One component section's output target, the shape hono-takibi gives it: `output` is a `.ts`
  * file, or a directory — one file per entry plus an index.ts barrel when `split` is true, its
@@ -70,6 +78,13 @@ function makeComponentFields() {
     split: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
       description: 'Write one file per entry into `output` rather than a single file.',
     }),
+    import: Schema.optionalKey(
+      Schema.Never.annotate({
+        message:
+          'import is not taken: a generated file imports another one relatively, under pathAlias inside the directory that holds the router directory, or by package from another package.',
+      }),
+    ),
+    package: Schema.optionalKey(PackageNameSchema),
   }
 }
 
@@ -226,6 +241,18 @@ const ConfigSchema = Schema.Struct({
   readonly: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
     description: '`as const` on the data components (responses, examples, links, ...).',
   }),
+  pathAlias: Schema.optionalKey(
+    Schema.String.check(
+      Schema.isPattern(/^[^\s'"`\\]+$/u, {
+        message: 'must be an import prefix, with no whitespace or quotes',
+      }),
+    ).annotate({
+      title: 'Path alias',
+      description:
+        'Import prefix the generated files use for one another instead of relative paths: `@/` where the tsconfig maps `@/*` to the directory that holds the router directory (`src` for `src/routes`). It is the alias of the package this config belongs to, so only files written into that package use it; a file written into another package imports by `package`.',
+      examples: ['@/', '~/'],
+    }),
+  ),
   format: Schema.optionalKey(
     Schema.declare<FormatConfig>((u): u is FormatConfig => typeof u === 'object' && u !== null, {
       title: 'Formatter options',
@@ -241,6 +268,12 @@ const ConfigSchema = Schema.Struct({
           title: 'Single-file components output',
           description:
             'Every component section in one file. Mutually exclusive with the per-type fields below. A directory is normalized to `<dir>/index.ts`.',
+        }),
+      ),
+      package: Schema.optionalKey(
+        PackageNameSchema.annotate({
+          description:
+            'Module the generated files of other packages import `output` from: the name of the package it is written into. Goes with `output`; a per-type output names its own.',
         }),
       ),
       schemas: Schema.optionalKey(
@@ -303,6 +336,10 @@ const ConfigSchema = Schema.Struct({
               'components.output is mutually exclusive with per-type component outputs (schemas, responses, ...). Use output for single-file mode, or per-type fields for split mode.',
           },
         ),
+        Schema.makeFilter((v) => v.package === undefined || v.output !== undefined, {
+          message:
+            'components.package goes with components.output: a per-type output names its package in its own block.',
+        }),
       )
       .annotate({
         title: 'Components output',

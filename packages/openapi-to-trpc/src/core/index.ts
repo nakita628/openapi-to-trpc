@@ -27,11 +27,17 @@ export type GeneratedFile = {
 }
 
 type Target = {
+  /** The field of the config the target is, `components.schemas` or `components.output`. */
+  readonly name: string
   readonly kinds: readonly Kind[]
   readonly output: string
   readonly split: boolean
   readonly exportTypes: boolean
+  readonly package: string | undefined
 }
+
+/** The package root of a generated file, when it is known. */
+export type PackageRoot = (file: string) => string | undefined
 
 /** Parsing the document, generating from it or formatting the result failed. */
 export class GenerateError extends Data.TaggedError('GenerateError')<{
@@ -53,8 +59,9 @@ export function openapiToTrpc(config: Config) {
       catch: toGenerateError,
     })
     if (!parsed.ok) return yield* new GenerateError({ message: parsed.error })
+    const packageRoot = yield* packageRoots(config)
     const files = yield* Effect.try({
-      try: () => makeFiles(parsed.value, config),
+      try: () => makeFiles(parsed.value, config, packageRoot),
       catch: toGenerateError,
     })
     yield* Effect.all(
@@ -63,6 +70,55 @@ export function openapiToTrpc(config: Config) {
     )
     return `openapi-to-trpc: ${config.input} (${config.schema})`
   })
+}
+
+/**
+ * The package each generated file is written into, as `makeFiles` wants it: a file imports
+ * another one of its package relatively, and one of another package by that one's `package`.
+ * A package is what the nearest `package.json` above an output delimits.
+ */
+function packageRoots(config: Config) {
+  return Effect.gen(function* () {
+    const directories = outputDirectories(config)
+    const roots = yield* Effect.forEach(directories, packageRootOf)
+    const known = new Map(directories.map((dir, index) => [dir, roots[index]]))
+    const packageRoot: PackageRoot = (file) => known.get(path.dirname(path.resolve(file)))
+    return packageRoot
+  })
+}
+
+/** The directory of the nearest `package.json` at or above `directory`. */
+function packageRootOf(directory: string) {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const directories: string[] = []
+    for (let dir = directory; ; dir = path.dirname(dir)) {
+      directories.push(dir)
+      if (path.dirname(dir) === dir) break
+    }
+    // A directory that is not there yet holds no package.json.
+    const found = yield* Effect.forEach(directories, (dir) =>
+      fs
+        .exists(path.join(dir, 'package.json'))
+        .pipe(Effect.catchTag('PlatformError', () => Effect.succeed(false))),
+    )
+    return directories.find((_, index) => found[index])
+  })
+}
+
+/** Every directory a generated file is written into: a split target is a directory of its own. */
+function outputDirectories(config: Config) {
+  return [
+    ...new Set([
+      path.resolve(config.output),
+      ...makeTargets(config).map((target) =>
+        target.split ? target.output : path.dirname(target.output),
+      ),
+      ...[config.type?.output, config.client?.output].flatMap((output) =>
+        output === undefined ? [] : [path.dirname(path.resolve(output))],
+      ),
+    ]),
+  ]
 }
 
 /** Merge (router files), format and write one file. */
@@ -90,8 +146,15 @@ function emit(file: GeneratedFile, options: FormatConfig | undefined) {
   })
 }
 
-/** Every file to write, as unformatted code keyed by absolute path. */
-export function makeFiles(openapi: OpenAPI, config: Config): readonly GeneratedFile[] {
+/**
+ * Every file to write, as unformatted code keyed by absolute path. `packageRoot` tells which
+ * package a file is written into; left out, every file is taken to be in one package.
+ */
+export function makeFiles(
+  openapi: OpenAPI,
+  config: Config,
+  packageRoot: PackageRoot = () => undefined,
+): readonly GeneratedFile[] {
   const components = openapi.components ?? {}
   const targets = makeTargets(config)
   const schemas = targets.find((target) => target.kinds.includes('schemas'))
@@ -103,19 +166,24 @@ export function makeFiles(openapi: OpenAPI, config: Config): readonly GeneratedF
     components.schemas,
     config.components?.schemas?.exportTypes ?? true,
   )
-  const schemasModule = schemas?.split ? path.join(schemas.output, 'index.ts') : schemas?.output
-  const toSchemas = (file: string) => () => specifier(file, schemasModule ?? file)
+  const importOf = makeImport(config, packageRoot)
+  const schemasModule = schemas && {
+    ...schemas,
+    output: schemas.split ? path.join(schemas.output, 'index.ts') : schemas.output,
+  }
+  const toSchemas = (from: string, file: string) => () =>
+    schemasModule === undefined ? '.' : importOf(from, file, schemasModule)
 
   const componentFiles = targets.flatMap((target) =>
     makeComponentFiles(target, components, context, toSchemas),
   )
 
   const routesDir = path.resolve(config.output)
-  const appRouter = path.join(routesDir, 'index.ts')
+  const appRouter = { name: 'output', output: path.join(routesDir, 'index.ts'), package: undefined }
   const procedures = makeProcedures(openapi, context)
   const routerFiles = Array.from(procedures, ([router, list]) => {
     const file = path.join(routesDir, `${router}.ts`)
-    const code = makeModule(makeRouter(router, list), context, toSchemas(file), [
+    const code = makeModule(makeRouter(router, list), context, toSchemas('output', file), [
       "import {initTRPC,TRPCError} from '@trpc/server'",
     ])
     return { path: file, code, merge: true }
@@ -126,16 +194,16 @@ export function makeFiles(openapi: OpenAPI, config: Config): readonly GeneratedF
   return [
     ...componentFiles,
     ...routerFiles,
-    { path: appRouter, code: makeAppRouter([...procedures.keys()]) },
+    { path: appRouter.output, code: makeAppRouter([...procedures.keys()]) },
     ...(typeFile
-      ? [{ path: typeFile, code: makeRouterTypes(specifier(typeFile, appRouter)) }]
+      ? [{ path: typeFile, code: makeRouterTypes(importOf('type', typeFile, appRouter, true)) }]
       : []),
     ...(config.client && clientFile
       ? [
           {
             path: clientFile,
             code: makeClient(
-              config.client.import ?? specifier(clientFile, appRouter),
+              config.client.import ?? importOf('client', clientFile, appRouter, true),
               config.client.baseUrl,
               config.client.credentials,
             ),
@@ -147,10 +215,10 @@ export function makeFiles(openapi: OpenAPI, config: Config): readonly GeneratedF
 
 /** One file per target, or for a split target one file per entry plus an index.ts barrel. */
 function makeComponentFiles(
-  { kinds, output, split, exportTypes }: Target,
+  { name, kinds, output, split, exportTypes }: Target,
   components: Components,
   context: Context,
-  toSchemas: (file: string) => () => string,
+  toSchemas: (from: string, file: string) => () => string,
 ): readonly GeneratedFile[] {
   const declarations = kinds.flatMap((kind) =>
     makeDeclarations(kind, components, context, exportTypes),
@@ -158,7 +226,7 @@ function makeComponentFiles(
   if (declarations.length === 0) return []
   if (!split) {
     const code = declarations.map((d) => d.code).join('\n\n')
-    return [{ path: output, code: makeModule(code, context, toSchemas(output)) }]
+    return [{ path: output, code: makeModule(code, context, toSchemas(name, output)) }]
   }
   return [
     ...declarations.map(({ code, fileName }) => {
@@ -167,7 +235,7 @@ function makeComponentFiles(
       // other kinds import the schemas module.
       const from = kinds.includes('schemas')
         ? (id: string) => schemaImportPath(context, id)
-        : toSchemas(file)
+        : toSchemas(name, file)
       return { path: file, code: makeModule(code, context, from) }
     }),
     {
@@ -190,7 +258,16 @@ function makeComponentFiles(
 function makeTargets(config: Config): readonly Target[] {
   const { output, ...kinds } = config.components ?? {}
   if (output !== undefined) {
-    return [{ kinds: KINDS, output: path.resolve(output), split: false, exportTypes: false }]
+    return [
+      {
+        name: 'components.output',
+        kinds: KINDS,
+        output: path.resolve(output),
+        split: false,
+        exportTypes: false,
+        package: kinds.package,
+      },
+    ]
   }
   return KINDS.flatMap((kind) => {
     const target =
@@ -205,22 +282,52 @@ function makeTargets(config: Config): readonly Target[] {
         : path.join(target.output, 'index.ts')
     return [
       {
+        name: `components.${kind}`,
         kinds: [kind],
         output: path.resolve(file),
         split: target.split,
         exportTypes: 'exportTypes' in target && target.exportTypes === true,
+        package: 'package' in target ? target.package : undefined,
       },
     ]
   })
 }
 
-/** Extensionless relative import from `from` to `to`, `index` resolved to its directory. */
-function specifier(from: string, to: string) {
-  const relative =
-    path
-      .relative(path.dirname(from), to)
-      .replaceAll('\\', '/')
-      .replace(/\.ts$/u, '')
-      .replace(/\/?\bindex$/u, '') || '.'
-  return relative.startsWith('.') ? relative : `./${relative}`
+/**
+ * How a generated file imports a target, the way hono-takibi does: by the target's `package`
+ * from another package, under `pathAlias` when the target is in the directory that holds the
+ * router directory, and relatively otherwise. A target of another package that names no
+ * `package` could not be imported, unless `relative` lets the import cross into it as a path.
+ */
+function makeImport(config: Config, packageRoot: PackageRoot) {
+  const aliasRoot = path.dirname(path.resolve(config.output))
+  const alias = config.pathAlias?.replace(/\/$/u, '')
+  return (
+    from: string,
+    file: string,
+    target: {
+      readonly name: string
+      readonly output: string
+      readonly package: string | undefined
+    },
+    relative = false,
+  ) => {
+    // A barrel is imported by its directory.
+    const module = target.output.replace(/(?:\/index)?\.ts$/u, '')
+    if (packageRoot(file) !== packageRoot(target.output)) {
+      if (target.package !== undefined) return target.package
+      if (!relative) {
+        const field =
+          target.name === 'components.output' ? 'components.package' : `${target.name}.package`
+        throw new Error(
+          `${from} imports ${target.name} from another package: set ${field} to the name of the package ${path.relative(process.cwd(), target.output)} is written into.`,
+        )
+      }
+    } else if (alias !== undefined) {
+      const inside = path.relative(aliasRoot, module).replaceAll('\\', '/')
+      if (inside !== '' && !inside.startsWith('..')) return `${alias}/${inside}`
+    }
+    const specifier = path.relative(path.dirname(file), module).replaceAll('\\', '/') || '.'
+    return specifier.startsWith('.') ? specifier : `./${specifier}`
+  }
 }

@@ -193,20 +193,29 @@ export default defineConfig({
   // `as const` on the data components (responses, examples, links, ...)
   readonly: false,
 
+  // Import prefix the generated files use for one another instead of relative paths, where the
+  // tsconfig maps `@/*` to the directory that holds the router directory (`src` here)
+  // pathAlias: '@/',
+
   // oxfmt options for the generated code
   // format: { printWidth: 100 },
 
   // Components (OpenAPI Components Object). Either every section into one file:
   // components: { output: 'src/components.ts' },
+  // components: { output: 'packages/components/src/index.ts', package: '@packages/components' },
   //
   // or each section into its own output: a `.ts` file, or a directory — one file per entry plus
   // an index.ts barrel with `split: true`, its index.ts without. Schemas default to
   // components/index.ts next to the router directory; the other sections are only written when
   // configured. `exportTypes` adds the inferred types to the sections whose entries are
   // validators: schemas (on by default), parameters, headers and mediaTypes (OpenAPI 3.2).
+  // A generated file imports another one relatively inside its package (under `pathAlias` when
+  // it is set), and by that output's `package` from another package; a package is what the
+  // nearest package.json delimits. An output another package imports must name its `package`.
   components: {
     schemas: { output: 'src/components/schemas', split: true, exportTypes: true },
     responses: { output: 'src/components/responses.ts' },
+    // parameters: { output: 'packages/parameters/src/index.ts', package: '@packages/parameters' },
     parameters: { output: 'src/components/parameters.ts', exportTypes: true },
     examples: { output: 'src/components/examples.ts' },
     requestBodies: { output: 'src/components/requestBodies.ts' },
