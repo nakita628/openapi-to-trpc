@@ -5,6 +5,4 @@ import { Effect } from 'effect'
 
 import { cli } from './cli/index.js'
 
-NodeRuntime.runMain(
-  cli(process.argv.slice(2), import.meta.url).pipe(Effect.provide(NodeServices.layer)),
-)
+NodeRuntime.runMain(cli(import.meta.url).pipe(Effect.provide(NodeServices.layer)))

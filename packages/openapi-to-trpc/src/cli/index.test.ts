@@ -4,7 +4,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import * as NodeServices from '@effect/platform-node/NodeServices'
-import { Console, Effect, Exit } from 'effect'
+import { Console, Effect, Exit, Stdio } from 'effect'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { cli } from './index.js'
@@ -27,8 +27,9 @@ async function runCli(argv: readonly string[]) {
     error: (...args: readonly unknown[]) => stderr.push(args.map(String).join(' ')),
   })
   const exit = await Effect.runPromiseExit(
-    cli(argv, ENTRY_URL).pipe(
+    cli(ENTRY_URL).pipe(
       Effect.provideService(Console.Console, recorder),
+      Effect.provide(Stdio.layerTest({ args: Effect.succeed(argv) })),
       Effect.provide(NodeServices.layer),
     ),
   )
