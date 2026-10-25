@@ -48,6 +48,55 @@ describe('makeFiles', () => {
   })
 })
 
+describe('makeFiles components', () => {
+  const openapi = {
+    openapi: '3.2.0',
+    info: { title: 'components', version: '1.0.0' },
+    paths: {},
+    components: {
+      schemas: {
+        user: { type: 'object', properties: { id: { type: 'string' } } },
+        User: { type: 'object', properties: { name: { type: 'string' } } },
+      },
+      responses: {
+        Named: {
+          description: 'the second schema',
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } },
+        },
+      },
+      mediaTypes: { Text: { schema: { type: 'string' } } },
+    },
+  } as const
+  const files = makeFiles(
+    openapi,
+    config({
+      components: {
+        schemas: { output: 'src/components/schemas.ts' },
+        responses: { output: 'src/components/responses.ts' },
+        mediaTypes: { output: 'src/components/mediaTypes.ts', exportTypes: true },
+      },
+    }),
+  )
+  const code = (file: string) => files.find((f) => f.path.endsWith(file))?.code
+
+  it('points a $ref at the schema that took a suffixed identifier', () => {
+    expect(code('responses.ts')).toContain('schema:User2Schema')
+    expect(code('responses.ts')).toContain("import {User2Schema} from './schemas'")
+  })
+
+  it('writes components.mediaTypes with their inferred types', () => {
+    expect(code('mediaTypes.ts')).toBe(
+      [
+        "import * as z from 'zod'",
+        '',
+        'export const TextMediaTypeSchema=z.string()',
+        '',
+        'export type TextMediaTypeSchema=z.infer<typeof TextMediaTypeSchema>',
+      ].join('\n'),
+    )
+  })
+})
+
 describe('openapiToTrpc', () => {
   it('keeps an implemented resolver when regenerating', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openapi-to-trpc-'))

@@ -35,11 +35,12 @@ second. A new `src/` directory gets its own override.
 ## What comes from oas-truth
 
 `parseOpenAPI`, `makeAdapter` (the zod / valibot / arktype / effect expression builders), the
-`make*Code` generators for every non-schema component kind, `makeSchemaDeclarations` /
-`makeSchemasCode` for `components.schemas` and the naming helpers (`toIdentifierPascalCase`,
-`schemaRefToName`, `makeSafeKey`, `isRecord`) are imported from `oas-truth`. Do not reimplement
-them here: a gap in them is fixed in oas-truth, or worked around in `generator/library.ts` with a
-comment saying why. `schema-truth` is oas-truth's dependency, not this package's.
+`make*Declarations` builders for every non-schema component kind (one declaration per entry,
+which a target bundles into one file or splits), `makeSchemaDeclarations` for
+`components.schemas` and the naming helpers (`makeSchemaIdentifiers`, `declarationFileName`,
+`toIdentifierPascalCase`, `schemaRefToName`, `makeSafeKey`, `isRecord`) are imported from
+`oas-truth`. Do not reimplement them here: a gap in them is fixed in oas-truth, or worked
+around in `generator/library.ts` with a comment saying why. `schema-truth` is oas-truth's dependency, not this package's.
 
 ## Output that holds the user's code
 

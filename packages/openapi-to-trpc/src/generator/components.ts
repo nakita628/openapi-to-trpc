@@ -1,18 +1,26 @@
 import {
+  declarationFileName,
   makeAdapter,
-  makeCallbacksCode,
-  makeExamplesCode,
-  makeHeadersCode,
-  makeLinksCode,
-  makeParametersCode,
-  makePathItemsCode,
-  makeRequestBodiesCode,
-  makeResponsesCode,
+  makeCallbacksDeclarations,
+  makeExamplesDeclarations,
+  makeHeadersDeclarations,
+  makeLinksDeclarations,
+  makeMediaTypesDeclarations,
+  makeParametersDeclarations,
+  makePathItemsDeclarations,
+  makeRequestBodiesDeclarations,
+  makeResponsesDeclarations,
   makeSchemaDeclarations,
-  makeSecuritySchemesCode,
-  toIdentifierPascalCase,
+  makeSchemaIdentifiers,
+  makeSecuritySchemesDeclarations,
 } from 'oas-truth'
-import type { ComponentAdapter, Components, SchemaDeclaration } from 'oas-truth'
+import type {
+  ComponentAdapter,
+  ComponentCodeOptions,
+  ComponentDeclaration,
+  Components,
+  SchemaDeclaration,
+} from 'oas-truth'
 
 import { LIBRARIES } from './library.js'
 import type { Library } from './library.js'
@@ -28,6 +36,7 @@ export const KINDS = [
   'links',
   'callbacks',
   'pathItems',
+  'mediaTypes',
 ] as const
 
 export type Kind = (typeof KINDS)[number]
@@ -44,6 +53,11 @@ export type Context = {
   readonly readonly: boolean
   /** Identifiers of every component schema (`UserSchema`, …), for import resolution. */
   readonly schemaIds: ReadonlySet<string>
+  /**
+   * OpenAPI key → identifier of every component schema (`user` → `User`, `User` → `User2`), so
+   * a `$ref` from another component kind names the declaration oas-truth emitted for it.
+   */
+  readonly identifiers: ReadonlyMap<string, string>
   /** `components.schemas` as oas-truth emits them, including split file names. */
   readonly schemas: readonly SchemaDeclaration[]
 }
@@ -51,19 +65,20 @@ export type Context = {
 const MAKERS: {
   readonly [K in Exclude<Kind, 'schemas'>]: (
     components: Components,
-    context: Context,
-    exportTypes: boolean,
-  ) => string
+    adapter: ComponentAdapter,
+    options: ComponentCodeOptions,
+  ) => readonly ComponentDeclaration[]
 } = {
-  parameters: (c, { adapter }, exportTypes) => makeParametersCode(c, adapter, exportTypes),
-  headers: (c, { adapter }, exportTypes) => makeHeadersCode(c, adapter, exportTypes),
-  responses: (c, { adapter, readonly }) => makeResponsesCode(c, adapter, readonly),
-  requestBodies: (c, { adapter, readonly }) => makeRequestBodiesCode(c, adapter, readonly),
-  examples: (c, { readonly }) => makeExamplesCode(c, readonly),
-  securitySchemes: (c, { readonly }) => makeSecuritySchemesCode(c, readonly),
-  links: (c, { readonly }) => makeLinksCode(c, readonly),
-  callbacks: (c, { adapter, readonly }) => makeCallbacksCode(c, adapter, readonly),
-  pathItems: (c, { adapter, readonly }) => makePathItemsCode(c, adapter, readonly),
+  parameters: makeParametersDeclarations,
+  headers: makeHeadersDeclarations,
+  responses: makeResponsesDeclarations,
+  requestBodies: makeRequestBodiesDeclarations,
+  examples: (c, _adapter, options) => makeExamplesDeclarations(c, options),
+  securitySchemes: (c, _adapter, options) => makeSecuritySchemesDeclarations(c, options),
+  links: (c, _adapter, options) => makeLinksDeclarations(c, options),
+  callbacks: makeCallbacksDeclarations,
+  pathItems: makePathItemsDeclarations,
+  mediaTypes: makeMediaTypesDeclarations,
 }
 
 /** Adapter, schema declarations and the identifiers other modules import from them. */
@@ -79,6 +94,7 @@ export function makeContext(
     library,
     readonly,
     schemaIds: new Set(declarations.map((declaration) => declaration.varName)),
+    identifiers: makeSchemaIdentifiers(schemas ?? {}),
     schemas: declarations,
   }
 }
@@ -91,13 +107,11 @@ export function makeDeclarations(
   exportTypes: boolean,
 ): readonly Declaration[] {
   if (kind === 'schemas') return context.schemas
-  return Object.keys(components[kind] ?? {}).flatMap((name) => {
-    const code = MAKERS[kind](only(components, kind, name), context, exportTypes)
-      .split('\n')
-      .filter((line) => !line.startsWith('import '))
-      .join('\n')
-      .trim()
-    return code ? [{ name, code, fileName: uncapitalize(toIdentifierPascalCase(name)) }] : []
+  // `exportTypes` is read by the schema-valued kinds, `readonly` by the data kinds.
+  return MAKERS[kind](components, context.adapter, {
+    exportTypes,
+    readonly: context.readonly,
+    identifiers: context.identifiers,
   })
 }
 
@@ -105,13 +119,8 @@ export function makeDeclarations(
 export function schemaImportPath(context: Context, id: string) {
   const fileName =
     context.schemas.find((declaration) => declaration.varName === id)?.fileName ??
-    uncapitalize(id.replace(/Schema$/u, ''))
+    declarationFileName(id.replace(/Schema$/u, ''))
   return `./${fileName}`
-}
-
-/** `components` narrowed to the single entry `name` of `kind`. */
-function only(components: Components, kind: Exclude<Kind, 'schemas'>, name: string): Components {
-  return { [kind]: { [name]: components[kind]?.[name] } }
 }
 
 /**
@@ -143,8 +152,4 @@ export function makeModule(
     '',
     body,
   ].join('\n')
-}
-
-function uncapitalize(text: string) {
-  return `${text.charAt(0).toLowerCase()}${text.slice(1)}`
 }

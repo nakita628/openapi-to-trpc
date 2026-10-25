@@ -199,9 +199,10 @@ export default defineConfig({
   // components: { output: 'src/components.ts' },
   //
   // or each kind into its own output. `split: true` makes `output` a directory with one file
-  // per entry plus an index.ts barrel. `exportTypes: true` adds inferred types to parameters
-  // and headers (schemas always export theirs). Schemas default to components/index.ts next
-  // to the router directory; the other kinds are only written when configured.
+  // per entry plus an index.ts barrel. `exportTypes: true` adds inferred types to parameters,
+  // headers and mediaTypes (schemas always export theirs). Schemas default to
+  // components/index.ts next to the router directory; the other kinds are only written when
+  // configured. `mediaTypes` is OpenAPI 3.2's `components.mediaTypes`.
   components: {
     schemas: { output: 'src/components/schemas', split: true },
     parameters: { output: 'src/components/parameters.ts', exportTypes: true },
@@ -213,6 +214,7 @@ export default defineConfig({
     links: { output: 'src/components/links.ts' },
     callbacks: { output: 'src/components/callbacks.ts' },
     pathItems: { output: 'src/components/pathItems.ts' },
+    mediaTypes: { output: 'src/components/mediaTypes.ts' },
   },
 
   // Router type helpers (`RouterInputs` / `RouterOutputs`)

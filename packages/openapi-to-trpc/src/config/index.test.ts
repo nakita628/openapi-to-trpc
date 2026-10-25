@@ -51,6 +51,13 @@ describe('parseConfig', () => {
       { input: 'openapi.yaml', type: { output: 'src/routes/index.ts' } },
       'type.output and output both write to src/routes/index.ts. Give each its own output path.',
     ],
+    [
+      {
+        input: 'openapi.yaml',
+        components: { schemas: { output: 'a.ts' }, mediaTypes: { output: 'a.ts' } },
+      },
+      'components.mediaTypes.output and components.schemas.output both write to a.ts. Give each its own output path.',
+    ],
   ])('rejects %j', (config, message) => {
     expect(Effect.runSync(Effect.flip(parseConfig(config)))).toMatchObject({
       _tag: 'ConfigError',

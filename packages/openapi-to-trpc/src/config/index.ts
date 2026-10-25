@@ -99,6 +99,7 @@ const COMPONENT_KINDS = [
   'links',
   'callbacks',
   'pathItems',
+  'mediaTypes',
 ] as const
 
 const ConfigSchema = Schema.Struct({
@@ -148,6 +149,7 @@ const ConfigSchema = Schema.Struct({
       links: Schema.optionalKey(ComponentOutputSchema),
       callbacks: Schema.optionalKey(ComponentOutputSchema),
       pathItems: Schema.optionalKey(ComponentOutputSchema),
+      mediaTypes: Schema.optionalKey(ComponentOutputSchema),
     })
       .check(
         Schema.makeFilter(
