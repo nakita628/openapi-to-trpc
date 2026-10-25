@@ -180,31 +180,30 @@ const ConfigSchema = Schema.Struct({
     // Two outputs aimed at one path is silent data loss, not a merge: every file is written
     // concurrently, so whichever finishes last survives. Compared after decoding, where a
     // directory `output` has already become `<dir>/index.ts` and `./a.ts` and `a.ts` are the
-    // same path. The router directory claims its index.ts, where the `appRouter` goes.
-    Schema.makeFilter(
-      (v) => {
-        const declared: readonly (readonly [string, string | undefined])[] = [
-          ['output', posix.join(v.output, 'index.ts')],
-          ['components.output', v.components?.output],
-          ...COMPONENT_KINDS.map(
-            (kind) => [`components.${kind}.output`, v.components?.[kind]?.output] as const,
-          ),
-          ['type.output', v.type?.output],
-        ]
-        const seen = new Map<string, string>()
-        for (const [field, output] of declared) {
-          if (output === undefined) continue
-          const key = posix.normalize(output).replace(/\/+$/u, '')
-          const first = seen.get(key)
-          if (first !== undefined) {
-            return `${field} and ${first} both write to ${output}. Give each its own output path.`
-          }
-          seen.set(key, field)
+    // same path. The router directory claims its index.ts, where the `appRouter` goes. The
+    // filter takes no `message` annotation: since effect 4.0.6 one replaces the sentence
+    // returned here, which names the two fields.
+    Schema.makeFilter((v) => {
+      const declared: readonly (readonly [string, string | undefined])[] = [
+        ['output', posix.join(v.output, 'index.ts')],
+        ['components.output', v.components?.output],
+        ...COMPONENT_KINDS.map(
+          (kind) => [`components.${kind}.output`, v.components?.[kind]?.output] as const,
+        ),
+        ['type.output', v.type?.output],
+      ]
+      const seen = new Map<string, string>()
+      for (const [field, output] of declared) {
+        if (output === undefined) continue
+        const key = posix.normalize(output).replace(/\/+$/u, '')
+        const first = seen.get(key)
+        if (first !== undefined) {
+          return `${field} and ${first} both write to ${output}. Give each its own output path.`
         }
-        return true
-      },
-      { message: 'every output needs its own path' },
-    ),
+        seen.set(key, field)
+      }
+      return true
+    }),
   )
   .annotate({
     title: 'openapi-to-trpc config',

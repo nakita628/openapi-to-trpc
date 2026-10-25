@@ -30,7 +30,7 @@ second. A new `src/` directory gets its own override.
 | `generator/` | code builders: `components.ts` (every component kind, imports), `router.ts` (procedures, routers, `appRouter`, router types), `library.ts` (what each validator library needs on top of oas-truth) — string in, string out | touch the filesystem or run an Effect |
 | `merge/` | `mergeRouter`: a regenerated router merged into what the user already wrote | know about OpenAPI |
 | `core/` | `makeFiles` (config + document → every file, pure) and `openapiToTrpc` (the Effect program: parse, build, merge, format, write) | parse the command line |
-| `cli/` | the `openapi-to-trpc` command on `effect/unstable/cli` | generator logic |
+| `cli/` | the `openapi-to-trpc` command on `effect/cli` | generator logic |
 
 ## What comes from oas-truth
 
@@ -39,7 +39,7 @@ second. A new `src/` directory gets its own override.
 `makeSchemasCode` for `components.schemas` and the naming helpers (`toIdentifierPascalCase`,
 `schemaRefToName`, `makeSafeKey`, `isRecord`) are imported from `oas-truth`. Do not reimplement
 them here: a gap in them is fixed in oas-truth, or worked around in `generator/library.ts` with a
-comment saying why. `schema-to-library` is oas-truth's dependency, not this package's.
+comment saying why. `schema-truth` is oas-truth's dependency, not this package's.
 
 ## Output that holds the user's code
 

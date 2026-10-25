@@ -98,6 +98,7 @@ export type UserSchema = z.infer<typeof UserSchema>
 // src/routes/users.ts
 import { initTRPC, TRPCError } from '@trpc/server'
 import * as z from 'zod'
+
 import { UserSchema } from '../components'
 
 const t = initTRPC.create()
@@ -115,6 +116,7 @@ export const usersRouter = t.router({
 ```ts
 // src/routes/index.ts
 import { initTRPC } from '@trpc/server'
+
 import { usersRouter } from './users'
 
 const t = initTRPC.create()
@@ -152,7 +154,7 @@ GLOBAL FLAGS
   --help, -h                                                          Show help information
   --version, -v                                                       Show version information
   --wizard                                                            Start wizard mode for a command
-  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 
 EXAMPLES
@@ -227,6 +229,7 @@ The client is yours to create — the URL, headers, transformer and `fetch` are 
 ```ts
 // src/client.ts
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
+
 import type { appRouter } from './routes'
 
 export const client = createTRPCClient<typeof appRouter>({

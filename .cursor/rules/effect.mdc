@@ -6,8 +6,8 @@ alwaysApply: false
 
 # Effect
 
-The CLI, the config and the core program are written on Effect v4 (release candidates, see the
-CI rule for how the version moves). The shapes below are enforced by
+The CLI, the config and the core program are written on Effect v4 (see the CI rule for how the
+version moves). The shapes below are enforced by
 `packages/openapi-to-trpc/lint/custom.js` — hono-takibi's plugin, as is; each rule's message says
 what to write instead. `src/generator` and `src/merge` are plain functions and stay that way.
 
@@ -70,6 +70,6 @@ export function readThing(input: string) {
   struct that owns both fields.
 - Keep `defineConfig`'s input type (`ConfigSchema.Encoded`) accurate: it is what users get
   completion and errors from while they type.
-- `effect/unstable/cli` owns parsing, `--help`, `--version` and completions. `<input>` is
+- `effect/cli` owns parsing, `--help`, `--version` and completions. `<input>` is
   decoded through a schema (`Argument.withSchema`) and `--schema` through `Flag.Literals`, so a
   wrong value is reported by the parser, with the help.

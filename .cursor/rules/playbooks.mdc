@@ -81,9 +81,11 @@ out its branch and follow the same steps.
    @effect/platform-node-shared`), then put both specs back to one caret range — `pnpm up`
    rewrites them to exact versions.
 2. If pnpm's release-age gate holds back part of the set, list the whole set under
-   `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` rather than mixing two rcs.
-3. `pnpm check`. Release candidates rename Schema and CLI APIs, so expect errors in `config/` and
-   `cli/` first; `--help` output may change too (paste it into the README).
+   `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` rather than mixing two releases.
+3. `pnpm check` and `pnpm test`. Even a patch has changed behavior here (4.0.6 let a filter's
+   `message` annotation replace the message the filter returns, and added completion shells to
+   `--help`), so expect failures in `config/` and `cli/` first; paste a new `--help` into the
+   README.
 4. `pnpm test`, then install the packed tarball with npm and run the CLI.
 5. Report which upstream changes forced code changes; that is what the commit body explains.
 

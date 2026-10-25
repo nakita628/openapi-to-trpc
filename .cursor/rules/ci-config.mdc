@@ -82,17 +82,19 @@ here, so the two stay one standard. When a rule is added:
 
 - `pnpm-lock.yaml` is written by pnpm. Never edit it by hand, and never delete it to "fix" an
   install. CI installs with `--frozen-lockfile`.
-- **`effect` and `@effect/platform-node` share one caret range (`^4.0.0-rc.112`) and move
-  together.** `@effect/platform-node` depends on `@effect/platform-node-shared` with a caret
-  range, which floats to the newest release candidate, and each one peers the matching
-  `effect`. Pinning `effect` exactly (as hono-takibi does) therefore lets a fresh install combine
-  two rcs — it did here: `@effect/platform-node-shared` rc.114 next to `effect` rc.112 failed with
-  `Cannot find module .../effect/dist/ByteSize.js`. With both on a caret range the resolver
-  picks one matching set. Every release candidate also renames APIs (`Argument.file` became
-  `Argument.File`), so a bump is a change of its own — see the playbook.
+- **`effect` and `@effect/platform-node` share one caret range (`^4.0.6`) and move together.**
+  `@effect/platform-node` depends on `@effect/platform-node-shared` with a caret range, which
+  floats to the newest release, and each one peers the matching `effect`. Pinning `effect`
+  exactly (as hono-takibi does) therefore lets a fresh install combine two releases — it did
+  here on the release candidates: `@effect/platform-node-shared` rc.114 next to `effect` rc.112
+  failed with `Cannot find module .../effect/dist/ByteSize.js`. With both on a caret range the
+  resolver picks one matching set. (schema-truth, under oas-truth, pins `effect` 4.0.5 exactly
+  and gets its own copy; `pnpm peers check` reports that pair, which is not this package's.) A
+  bump still changes behavior now and then, so it is a change of its own — see the playbook.
 - pnpm holds a release back for a day (`minimumReleaseAge`). When it would let only part of an
   Effect set through, the newest set is listed together under `minimumReleaseAgeExclude` in
-  `pnpm-workspace.yaml`, as `oas-truth@0.3.0` and `schema-to-library@0.4.1` are.
+  `pnpm-workspace.yaml`, as `oas-truth@0.5.1` and `schema-truth@0.7.0` are. Remove an entry
+  once the release is older than a day.
 - `@apidevtools/swagger-parser`, `@typespec/compiler` and `@typespec/openapi3` are peers of
   oas-truth, which npm and pnpm install automatically. Nothing here imports them, so they are not
   dependencies of the package.
@@ -106,8 +108,8 @@ here, so the two stay one standard. When a rule is added:
 - Renovate merges pins, the lockfile refresh and minor or patch updates of dependencies at 1.0
   or later on its own once CI passes. Majors, `0.x` dependencies (`oas-truth`, `oxfmt`,
   `vite-plus`) and a new digest under an unchanged action tag wait for a review. So does the
-  `effect` group: Renovate calls an rc bump a patch, but every rc renames APIs, so that PR is
-  finished by hand with the Bump effect playbook. The rule excluding it sits last in
+  `effect` group: a patch has changed Schema behavior and `--help` here, so that PR is finished
+  by hand with the Bump effect playbook. The rule excluding it sits last in
   `packageRules`, because a later rule overrides an earlier one.
 
 ## The published package

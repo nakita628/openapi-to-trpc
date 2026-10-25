@@ -24,7 +24,7 @@
       "minimumReleaseAge": "7 days"
     },
     {
-      "description": "The Effect 4 release candidates ship as one set: @effect/platform-node's caret range on @effect/platform-node-shared floats to the newest rc, which peers the matching effect. effect and @effect/* move in one PR so the lockfile never mixes two rcs.",
+      "description": "Effect ships as one set: @effect/platform-node's caret range on @effect/platform-node-shared floats to the newest release, which peers the matching effect. effect and @effect/* move in one PR so the lockfile never mixes two releases.",
       "matchPackageNames": ["effect", "@effect/**"],
       "groupName": "effect"
     },
@@ -56,7 +56,7 @@
       "automerge": false
     },
     {
-      "description": "Renovate calls an Effect release candidate bump (rc.115 to rc.120) a patch, so the rule above would automerge it. Every rc renames Schema and CLI APIs and can change --help, so the effect PR waits for the Bump effect playbook in .cursor/rules/playbooks.mdc.",
+      "description": "The rule above would automerge an Effect patch, but a patch has changed Schema behavior and --help here (4.0.6), so the effect PR waits for the Bump effect playbook in .cursor/rules/playbooks.mdc.",
       "matchPackageNames": ["effect", "@effect/**"],
       "automerge": false
     }

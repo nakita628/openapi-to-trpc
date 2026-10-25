@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 
 import { Console, Effect, FileSystem, Option, Runtime, Schema } from 'effect'
-import { Argument, CliError, CliOutput, Command, Flag } from 'effect/unstable/cli'
+import { Argument, CliError, CliOutput, Command, Flag } from 'effect/cli'
 
 const COMMAND_NAME = 'openapi-to-trpc'
 
@@ -113,7 +113,7 @@ function generate(args: Command.Command.Config.Infer<typeof commandLine>) {
 
 /**
  * The `openapi-to-trpc` command: parsing, validation, `--help`, `--version` and shell
- * completions are owned by `effect/unstable/cli`, {@link generate} is the rest.
+ * completions are owned by `effect/cli`, {@link generate} is the rest.
  */
 const command = Command.make(COMMAND_NAME, commandLine, generate).pipe(
   Command.withDescription('Generate tRPC routers from OpenAPI or TypeSpec'),

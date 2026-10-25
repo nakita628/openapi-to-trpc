@@ -12,6 +12,6 @@ export default defineConfig({
     singleQuote: true,
     semi: false,
     sortPackageJson: true,
-    experimentalSortImports: {},
+    sortImports: {},
   },
 })
