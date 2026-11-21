@@ -46,7 +46,7 @@
     "@effect/platform-node": "^4.0.6",
     "effect": "^4.0.6",
     "oas-truth": "^0.5.1",
-    "oxfmt": "^0.74.0",
+    "oxfmt": "^0.78.0",
     "ts-morph": "^28.0.0"
   },
   "devDependencies": {
