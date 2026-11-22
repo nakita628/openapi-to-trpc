@@ -1,9 +1,16 @@
 <!--
-Title: an imperative sentence, no `feat:` / `fix:` prefix, no trailing period — the shape of the
-commit history. Write it for the person reading the release notes, not for the diff.
+Title: `type(scope): summary` (Conventional Commits), imperative mood, no trailing period. Write
+it for the person reading the release notes, not for the diff. main takes squash merges, so the
+title becomes the commit, and release-please reads it to release: `feat` raises the minor version,
+`fix` and `perf` the patch, `!` before the colon marks a breaking change (the minor while the
+version is 0.x), and the other types release nothing. Only a change under
+packages/openapi-to-trpc is released.
 
-  Keep middleware on a procedure when regenerating a router
-  Print the files a run wrote
+  type   feat | fix | perf | refactor | docs | test | build | ci | chore
+  scope  router | components | types | client | merge | cli | config | example | deps
+
+  fix(merge): keep middleware on a procedure when regenerating a router
+  feat(cli): print the files a run wrote
 -->
 
 <!-- A pull request body has no top-level heading: GitHub shows the title above it. -->
@@ -27,7 +34,7 @@ commit history. Write it for the person reading the release notes, not for the d
 
 ## When
 
-<!-- Release impact: `none` | `next release` | `version bumped to x.y.z`. -->
+<!-- Release impact, as the title's type decides it: `none` | `patch` | `minor` | `breaking`. The version is bumped by the release-please pull request, not here. -->
 
 ## How
 

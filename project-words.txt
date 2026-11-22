@@ -4,6 +4,7 @@
 apidevtools
 arktype
 artipacked
+autorelease
 bsdtar
 codegen
 extensionless

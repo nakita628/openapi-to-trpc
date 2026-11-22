@@ -26,3 +26,7 @@ pnpm test    # the package suite, the generated routers of every validator libra
 `pnpm check` and `pnpm test` must pass before a change is finished — they are what CI runs.
 Never relax a linter to get a change through, never delete or overwrite the code users keep in
 the generated router files, and write everything committed in English.
+
+Pull request titles are Conventional Commits (`fix(merge): keep middleware on a procedure`):
+`main` takes squash merges, and release-please reads the titles to bump the version and release
+on its own. Never bump `version` or publish by hand.

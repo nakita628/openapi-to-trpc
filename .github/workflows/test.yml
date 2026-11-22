@@ -12,6 +12,11 @@ on:
     branches:
       - main
   pull_request:
+  # Started by hand on main, it is followed by release.yml as a push is.
+  workflow_dispatch: {}
+  # release.yml calls it first when it is started directly (by release-please.yml once the version
+  # bump is merged, or by hand), since no Test run comes before it then.
+  workflow_call: {}
 
 permissions:
   contents: read
