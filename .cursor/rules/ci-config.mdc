@@ -39,9 +39,10 @@ Test, Lint and the two release workflows are hekireki's, on `voidzero-dev/setup-
 - `.github/zizmor.yml` excuses the tag job's checkout **by line and column**
   (`release.yml:83:9`). An edit above that line in `release.yml` moves it: update the entry in
   the same change, or zizmor fails.
-- `pnpm lint:actions` runs zizmor offline, as the Lint workflow does. A shell that exports
-  `GH_TOKEN` or `GITHUB_TOKEN` switches it to its online audits, which can fail on network
-  access alone: run it with those unset (`env -u GH_TOKEN -u GITHUB_TOKEN pnpm lint:actions`).
+- `pnpm lint:actions`, and so `pnpm check` and `pnpm fix`, runs zizmor offline, as the Lint
+  workflow does. A shell that exports `GH_TOKEN` or `GITHUB_TOKEN` switches it to its online
+  audits, which can fail on network access alone: run them with those unset
+  (`env -u GH_TOKEN -u GITHUB_TOKEN pnpm check`).
 
 ## Editing the lint configuration
 
