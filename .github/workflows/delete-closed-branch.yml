@@ -1,0 +1,45 @@
+name: Delete closed branch
+
+# Deletes the head branch of a pull request closed without being merged. A merged one is deleted
+# by the repository setting "Automatically delete head branches" (delete_branch_on_merge), which
+# has no counterpart for a pull request that is only closed.
+#
+# `pull_request_target` is the trigger zizmor warns about because it hands a write token to a
+# workflow run for a pull request from a fork. Here nothing is checked out and no code from the
+# pull request runs: the job only deletes a branch of this repository through the API, and skips
+# a pull request from a fork, the default branch, and a branch another open pull request is based
+# on (deleting it would close that pull request).
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.merged == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref != github.event.repository.default_branch
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Delete the head branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$(gh pr list --state open --base "$BRANCH" --json number --jq '.[].number')" ]; then
+            echo "$BRANCH is the base of an open pull request; kept"
+            exit 0
+          fi
+          if ! gh api "repos/$GH_REPO/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
+            echo "$BRANCH is already gone"
+            exit 0
+          fi
+          gh api --method DELETE "repos/$GH_REPO/git/refs/heads/$BRANCH"
+          echo "deleted $BRANCH"
