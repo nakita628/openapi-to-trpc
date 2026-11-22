@@ -8,13 +8,15 @@ alwaysApply: false
 
 ## The workflows
 
-The same three workflows as hono-takibi and hekireki, on `voidzero-dev/setup-vp`:
+Test, Lint and the two release workflows are hekireki's, on `voidzero-dev/setup-vp`:
 
 - `.github/workflows/test.yml` (Test): install → build → package tests → `test/` suite →
   `vp run check`. A new check is added to the root `package.json` scripts **and** reached from
-  this workflow, so local and CI cannot disagree about what "clean" means.
+  this workflow, so local and CI cannot disagree about what "clean" means. It also runs when
+  started by hand (`workflow_dispatch`) and when `release.yml` calls it (`workflow_call`).
 - `.github/workflows/lint.yml` (Lint): `vp run lint`, the gates that need no build.
-- `.github/workflows/release.yml` runs after Test succeeds on a push to `main`; see Releasing.
+- `.github/workflows/release-please.yml` (Release PR) opens the version bump pull request and
+  merges it; `.github/workflows/release.yml` tags, publishes and releases. See Releasing.
 - **Verify a change to the scripts, the workflows or the build in a fresh clone**, the way CI
   starts: `git clone . <tmp> && cd <tmp> && pnpm install --frozen-lockfile`, then the workflow's
   steps in order. The working copy carries gitignored output (`dist`, `test/__generated__`) that
@@ -23,8 +25,8 @@ The same three workflows as hono-takibi and hekireki, on `voidzero-dev/setup-vp`
   `uses: actions/checkout@3d3c42e5… # v7.0.1`. A floating tag is a mutable dependency with access
   to the job — never introduce one. Resolve a tag with
   `git ls-remote https://github.com/<owner>/<repo> 'refs/tags/<tag>^{}'`.
-- `permissions` stays minimal (`contents: read`); checkout uses `persist-credentials: false`,
-  except the release job that pushes the tag.
+- `permissions` stays minimal (`contents: read`); a job that needs more says why beside them.
+  Checkout uses `persist-credentials: false`, except the release job that pushes the tag.
 - setup-vp puts `vp` on `PATH`, not `pnpm`: a step runs a root script as `vp run <script>`, which
   hands its pnpm to the script. Node is 24, which runs `scripts/*.ts` directly.
 - actionlint (`scripts/actionlint.ts`) and zizmor (`scripts/zizmor.ts`) download a pinned release
@@ -35,8 +37,12 @@ The same three workflows as hono-takibi and hekireki, on `voidzero-dev/setup-vp`
   `.github/actionlint.yaml` scoped to one file, a zizmor audit in `.github/zizmor.yml` or an
   inline `# zizmor: ignore[audit]` comment. Never by dropping the check or the setting.
 - `.github/zizmor.yml` excuses the tag job's checkout **by line and column**
-  (`release.yml:62:9`). An edit above that line in `release.yml` moves it: update the entry in
+  (`release.yml:83:9`). An edit above that line in `release.yml` moves it: update the entry in
   the same change, or zizmor fails.
+- `pnpm lint:actions`, and so `pnpm check` and `pnpm fix`, runs zizmor offline, as the Lint
+  workflow does. A shell that exports `GH_TOKEN` or `GITHUB_TOKEN` switches it to its online
+  audits, which can fail on network access alone: run them with those unset
+  (`env -u GH_TOKEN -u GITHUB_TOKEN pnpm check`).
 
 ## Editing the lint configuration
 
@@ -111,6 +117,12 @@ here, so the two stay one standard. When a rule is added:
   `effect` group: a patch has changed Schema behavior and `--help` here, so that PR is finished
   by hand with the Bump effect playbook. The rule excluding it sits last in
   `packageRules`, because a later rule overrides an earlier one.
+- Renovate titles its PRs as Conventional Commits (`semanticCommits`, with the
+  `:semanticPrefixFixDepsChoreOthers` preset of `config:recommended`): an update of runtime
+  `dependencies` is `fix(deps): …`, so merging one for `packages/openapi-to-trpc` releases a patch,
+  and everything else is `chore(deps): …` and releases nothing. Retitle a PR before merging when
+  its type understates the change: an update that changes the generated output is released for
+  what it changes for users (`feat`, or `!` when it breaks them).
 
 ## The published package
 
@@ -125,22 +137,44 @@ here, so the two stay one standard. When a rule is added:
 
 ## Releasing
 
-Releases are CI's job, and the `version` field of `packages/openapi-to-trpc/package.json` drives
-them. `release.yml` (hono-takibi's) runs after Test passes on a push to `main` and, from the exact
-commit Test ran on:
+Releases are CI's job, worked out from the Conventional Commits merged into `main` (the Git
+policy of the project rule). Nobody bumps the version or approves a release; hekireki releases
+the same way.
 
-1. **check** — reads the version and asks npm whether it is published;
-2. **tag** — creates `v<version>` on that commit, or verifies it is already there;
-3. **publish** — only when npm does not have the version: build, then
-   `pnpm -F openapi-to-trpc publish` with npm provenance (environment `release`,
-   `id-token: write`);
-4. **release** — creates the GitHub release for the tag with generated notes.
+1. **`release-please.yml` (Release PR)** runs on every push to `main`. release-please reads the
+   commits since the last GitHub Release that change something under `packages/openapi-to-trpc`
+   (`release-please-config.json`, counting from the version in `.release-please-manifest.json`)
+   and, when one is a `feat`, `fix` or `perf`, opens `chore: bump version to x.y.z`, which
+   changes `version` in `packages/openapi-to-trpc/package.json` and the manifest. The same job
+   squash-merges that pull request with the workflow's token and starts `release.yml` on `main`.
+2. **`release.yml`** runs after Test passes on a push to `main`, or when started directly, where
+   its `test` job calls Test first: a merge made with the workflow's token starts no Test. From
+   that exact commit:
+   1. **check** — reads the version and asks npm whether it is published;
+   2. **tag** — creates `v<version>` on that commit, or verifies it is already there;
+   3. **publish** — only when npm does not have the version: build, then
+      `pnpm -F openapi-to-trpc publish` with npm provenance (environment `release`,
+      `id-token: write`);
+   4. **release** — creates the GitHub release for the tag with generated notes.
 
-- **To release, bump `version` in its own commit whose subject is the version (`0.1.0`), with
-  `pnpm check` and `pnpm test` green, and push to `main`.** Nothing else publishes.
-- **Never publish by hand, and never create or move a `v*` tag by hand.** Never reuse or roll
-  back a published version; to fix a release, bump again.
+- `release.yml` writes the Release, not release-please (`skip-github-release`), so release-please
+  never relabels its merged pull request from `autorelease: pending` to `autorelease: tagged`, and
+  opens no new one while a pending one is left. The first step of the Release PR job relabels it
+  once a Release at or above its version exists. A bump whose release failed therefore holds
+  back the next one: finish that release first.
+- **Never publish by hand, never create or move a `v*` tag by hand, and never bump `version` by
+  hand.** Never reuse or roll back a published version: a `fix` merged after a bad release
+  releases the next patch.
 - If publish fails (an npm outage, a missing trusted publisher), fix the cause and re-run the
   failed jobs; the tag already points at the right commit.
-- The npm side is configured once, on the package's access page: a trusted publisher for this
-  repository, workflow `release.yml`, environment `release`.
+- When `release.yml` asks for a new version (a published version without its tag, a tag on
+  another commit), bump `version` in `packages/openapi-to-trpc/package.json` **and** in
+  `.release-please-manifest.json`, in one commit (`chore: bump version to x.y.z`) pushed to
+  `main`. release-please counts from the manifest, so bumping only the package has it propose
+  the same version again.
+- Configured once, outside the repository: Actions may create and approve pull requests
+  (Settings → Actions → General → Workflow permissions); squash merging takes the pull request
+  title as its default commit message; no branch protection or ruleset on `main` requires a review
+  or a status check that the bump pull request cannot get (no workflow runs on it); and on npm, a
+  trusted publisher on the package's access page for this repository, workflow `release.yml`,
+  environment `release`.

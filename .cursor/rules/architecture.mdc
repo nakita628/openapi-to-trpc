@@ -39,8 +39,11 @@ second. A new `src/` directory gets its own override.
 which a target bundles into one file or splits), `makeSchemaDeclarations` for
 `components.schemas` and the naming helpers (`makeSchemaIdentifiers`, `declarationFileName`,
 `toIdentifierPascalCase`, `schemaRefToName`, `makeSafeKey`, `isRecord`) are imported from
-`oas-truth`. Do not reimplement them here: a gap in them is fixed in oas-truth, or worked
-around in `generator/library.ts` with a comment saying why. `schema-truth` is oas-truth's dependency, not this package's.
+`oas-truth`. `schema-truth` is oas-truth's dependency, not this package's. Both are developed in
+[nakita628/truth](https://github.com/nakita628/truth). Do not reimplement them here, and do not
+work around a bug or a gap in them either: a problem whose cause is there is reported there as an
+issue and fixed there (Fix a generator bug in the playbooks says how), and the fix reaches this
+package with the oas-truth update that releases it.
 
 ## Output that holds the user's code
 

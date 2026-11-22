@@ -26,3 +26,13 @@ pnpm test    # the package suite, the generated routers of every validator libra
 `pnpm check` and `pnpm test` must pass before a change is finished — they are what CI runs.
 Never relax a linter to get a change through, never delete or overwrite the code users keep in
 the generated router files, and write everything committed in English.
+
+Pull request titles are Conventional Commits (`fix(merge): keep middleware on a procedure`):
+`main` takes squash merges, and release-please reads the titles to bump the version and release
+on its own. Never bump `version` or publish by hand.
+
+Schema generation comes from oas-truth and schema-truth: the OpenAPI and TypeSpec parser, the
+zod, valibot, arktype and Effect Schema code, the component generators. Both are developed in
+[nakita628/truth](https://github.com/nakita628/truth). When the cause of a problem is there, do
+not work around it here: open an issue at nakita628/truth and link it from the issue or pull
+request here, as Fix a generator bug in `.cursor/rules/playbooks.mdc` describes.

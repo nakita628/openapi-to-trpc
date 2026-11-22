@@ -8,6 +8,7 @@
   "timezone": "Asia/Tokyo",
   "schedule": ["* * * * 6"],
   "dependencyDashboardAutoclose": true,
+  "semanticCommits": "enabled",
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
     "minimumReleaseAge": "1 day"
