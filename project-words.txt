@@ -24,5 +24,6 @@ textlintrc
 uncapitalize
 unstub
 voidzero
+wakusei
 zizmor
 zizmorcore

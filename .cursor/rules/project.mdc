@@ -45,6 +45,8 @@ renovate.json                 dependency updates (Saturdays, Asia/Tokyo); see th
                               on main: opens the version bump pull request and merges it
 .github/workflows/release.yml after Test on main, or started by release-please.yml: tag, npm
                               publish, GitHub release
+.github/workflows/delete-closed-branch.yml
+                              deletes the branch of a pull request closed without merging
 release-please-config.json    how release-please works the next version out
 .release-please-manifest.json the version release-please counts from
 ```
