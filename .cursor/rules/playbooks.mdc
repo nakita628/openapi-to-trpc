@@ -27,7 +27,8 @@ commit when asked.
 2. Build it in `src/generator/router.ts` as a JSON Schema handed to the oas-truth adapter, not as
    library-specific code: the adapter writes zod, valibot, arktype and Effect Schema from it.
 3. Only what the adapter leaves to the host goes in `src/generator/library.ts` (the Standard
-   Schema wrapper and the import probe), per library.
+   Schema wrapper and the import probe), per library. What the adapter cannot express yet is a
+   feature request at nakita628/truth (Fix a generator bug, step 4), not code here.
 4. `pnpm test` proves the result type-checks with `tsc` and validates at runtime for every
    library. Add a runtime assertion to `test/generate.test.ts` when the behavior is new.
 
@@ -36,10 +37,24 @@ commit when asked.
 1. Reproduce it as a failing test at the smallest document that shows it. Prefer asserting the
    behavior of the generated code (`test/generate.test.ts` calls the routers through a tRPC
    caller) over string matching.
-2. Find the layer that owns the mistake — oas-truth (parsing, the adapters, the component
-   generators), a builder in `generator/`, the merge, or the program in `core/` — and fix it
-   there, not downstream. A bug in oas-truth is reported or fixed there.
+2. Find the layer that owns the mistake — oas-truth or schema-truth (parsing, the zod / valibot /
+   arktype / Effect Schema code the adapter writes, the component generators), a builder in
+   `generator/`, the merge, or the program in `core/` — and fix it there, not downstream. When it
+   is oas-truth or schema-truth, nothing changes here: follow step 4.
 3. Check whether the other validator libraries and component layouts have the same mistake.
+4. A mistake in oas-truth or schema-truth is fixed in
+   [nakita628/truth](https://github.com/nakita628/truth), never worked around here:
+   1. Run the reproduction against the newest oas-truth on npm first. If a release already fixes
+      it, the change here is the Bump oas-truth playbook.
+   2. Look through the open issues there, and add to one that reports the same problem rather
+      than opening another.
+   3. Otherwise open one in English from its bug report template (`fix: …`; a construct the
+      adapter cannot express is its feature request template, `feat: …`): the smallest OpenAPI
+      document, the output it writes, the output expected, and the oas-truth and schema-truth
+      versions. Without access to nakita628/truth, write the issue out in the issue here for
+      the owner to file.
+   4. Link it from the issue or pull request here, which stays open until an oas-truth release
+      has the fix. The failing test from step 1 lands with that update.
 
 ## Port a feature from hono-takibi
 
@@ -93,8 +108,12 @@ out its branch and follow the same steps.
 
 1. Read its changelog and its type declarations: a new export may replace code here.
 2. Update it, then `pnpm check` and `pnpm test`. The integration suite shows any change in the
-   generated code for every library; read the difference rather than adjusting an assertion.
+   generated code for every library; read the difference rather than adjusting an assertion. If
+   pnpm's one-day release-age gate holds the new release back, list it under
+   `minimumReleaseAgeExclude`, as the CI rule says.
 3. Remove what oas-truth now provides, and the tests that only covered it.
+4. Close the issues here that waited for this release (Fix a generator bug, step 4): their
+   failing tests land in the same change, with `Closes #<number>`.
 
 ## Release
 
