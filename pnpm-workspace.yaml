@@ -8,8 +8,3 @@ allowBuilds:
   msgpackr-extract: false
   # tsx (the todo example's runner) installs esbuild's native binary through this script.
   esbuild: true
-# oas-truth 0.5.1 is this repository's parser sibling, published today. pnpm's default
-# 24-hour floor rejects it in CI until then; the lockfile already pins it.
-minimumReleaseAgeExclude:
-  - oas-truth@0.5.1
-  - schema-truth@0.7.0
