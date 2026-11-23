@@ -1,6 +1,6 @@
 {
   "name": "openapi-to-trpc",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "OpenAPI/TypeSpec to tRPC code generator",
   "keywords": [
     "codegen",
