@@ -30,7 +30,7 @@ function runError(value: object) {
 
 describe('makeFiles', () => {
   it('writes schemas to src/components and one router per first path segment by default', async () => {
-    const openapi = await parseOpenAPI(input)
+    const openapi = await parseOpenAPI(config({}).input)
     if (!openapi.ok) throw new Error(openapi.error)
     const files = makeFiles(openapi.value, config({}))
     expect(files.map((file) => path.relative(process.cwd(), file.path))).toStrictEqual([
@@ -195,11 +195,35 @@ describe('makeFiles imports', () => {
       'output imports components.schemas from another package: set components.schemas.package to the name of the package packages/schemas/index.ts is written into.',
     )
   })
+
+  it('imports every effect module a router names', () => {
+    const files = makeFiles(
+      {
+        openapi: '3.2.0',
+        info: { title: 'int64', version: '1.0.0' },
+        paths: {
+          '/counters': {
+            get: {
+              parameters: [
+                { name: 'min', in: 'query', schema: { type: 'integer', format: 'int64' } },
+              ],
+              responses: { '204': { description: 'none' } },
+            },
+          },
+        },
+      },
+      config({ schema: 'effect' }),
+    )
+    const code = files.find((file) => file.path.endsWith('routes/counters.ts'))?.code ?? ''
+    expect(code.split('\n').filter((line) => line.endsWith("from 'effect'"))).toStrictEqual([
+      "import { Schema, SchemaTransformation } from 'effect'",
+    ])
+  })
 })
 
 /** The generated client file for `client`, written next to the default router directory. */
 async function clientCode(client: object) {
-  const openapi = await parseOpenAPI(input)
+  const openapi = await parseOpenAPI(config({}).input)
   if (!openapi.ok) throw new Error(openapi.error)
   return makeFiles(openapi.value, config({ client: { output: 'src/client.ts', ...client } }))
     .find((file) => file.path.endsWith('client.ts'))

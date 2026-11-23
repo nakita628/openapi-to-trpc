@@ -145,7 +145,7 @@ export function makeModule(
   return [
     ...header,
     ...(library.uses.test(body)
-      ? [context.adapter.renderImport({ cyclic: /\bscope\(/u.test(body) })]
+      ? [context.adapter.renderImport({ cyclic: /\bscope\(/u.test(body), code: body })]
       : []),
     ...Array.from(
       Map.groupBy(refs, from),
