@@ -671,8 +671,10 @@ the same way.
   trusted publisher on the package's access page for this repository, workflow `release.yml`,
   environment `release`. The `release` environment only deploys from `main` (Settings →
   Environments → `release` → Deployment branches), so no other branch can reach the trusted
-  publisher. "Automatically delete head branches" is on. The `claude` label hands an issue to the
-  hourly Issue loop.
+  publisher. "Automatically delete head branches" is on. The Issue loop, a Claude Code scheduled
+  task, starts when the owner opens an issue and runs on no timer; it takes only the owner's
+  issues and skips one labelled `question`, which waits on the owner (one of GitHub's default
+  labels).
 
 ## Playbooks
 
