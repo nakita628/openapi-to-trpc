@@ -128,7 +128,8 @@ means not done. If you only ran part of it, say which part.
   pull request title becomes the commit, and release-please reads it to decide the release. The
   title, and the subject of anything pushed to `main` directly, is a Conventional Commit:
   `type(scope): summary`, imperative mood, no trailing period
-  (`fix(merge): keep middleware on a procedure when regenerating a router`).
+  (`fix(merge): keep middleware on a procedure when regenerating a router`). The PR title
+  workflow fails a pull request whose title has any other shape.
   - `feat` raises the minor version, `fix` and `perf` the patch; `!` before the colon
     (`feat(config)!: …`) marks a breaking change, which raises the minor while the version is
     `0.x`. `refactor`, `docs`, `test`, `build`, `ci` and `chore` release nothing, and neither
@@ -490,7 +491,7 @@ The `CLI Reference` block is `openapi-to-trpc --help` verbatim, in a `text` fenc
 
 ### The workflows
 
-Test, Lint and the two release workflows are hekireki's; Delete closed branch is the one wakusei runs, on `voidzero-dev/setup-vp`:
+Test, Lint and the two release workflows are hekireki's; Delete closed branch is the one wakusei runs, on `voidzero-dev/setup-vp`; PR title is truth's:
 
 - `.github/workflows/test.yml` (Test): install → build → package tests → `test/` suite →
   `vp run check`. A new check is added to the root `package.json` scripts **and** reached from
@@ -503,6 +504,9 @@ Test, Lint and the two release workflows are hekireki's; Delete closed branch is
   a pull request closed without being merged; a merged one is deleted by the repository setting
   "Automatically delete head branches". It checks out nothing, skips forks, the default branch
   and a branch another open pull request is based on.
+- `.github/workflows/pr-title.yml` (PR title) fails a pull request whose title is not
+  `type(scope): summary` (see [Git policy](#git-policy)), because the title becomes the commit
+  release-please reads. It reads the title from the event payload and is granted nothing.
 - **Verify a change to the scripts, the workflows or the build in a fresh clone**, the way CI
   starts: `git clone . <tmp> && cd <tmp> && pnpm install --frozen-lockfile`, then the workflow's
   steps in order. The working copy carries gitignored output (`dist`, `test/__generated__`) that
