@@ -30,7 +30,7 @@ function runError(value: object) {
 
 describe('makeFiles', () => {
   it('writes schemas to src/components and one router per first path segment by default', async () => {
-    const openapi = await parseOpenAPI(input)
+    const openapi = await parseOpenAPI(config({}).input)
     if (!openapi.ok) throw new Error(openapi.error)
     const files = makeFiles(openapi.value, config({}))
     expect(files.map((file) => path.relative(process.cwd(), file.path))).toStrictEqual([
@@ -199,7 +199,7 @@ describe('makeFiles imports', () => {
 
 /** The generated client file for `client`, written next to the default router directory. */
 async function clientCode(client: object) {
-  const openapi = await parseOpenAPI(input)
+  const openapi = await parseOpenAPI(config({}).input)
   if (!openapi.ok) throw new Error(openapi.error)
   return makeFiles(openapi.value, config({ client: { output: 'src/client.ts', ...client } }))
     .find((file) => file.path.endsWith('client.ts'))

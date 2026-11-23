@@ -132,6 +132,9 @@ components:
           maxLength: 200
         author:
           $ref: '#/components/schemas/User'
+        views:
+          type: integer
+          format: int64
     CreatePost:
       type: object
       required:
