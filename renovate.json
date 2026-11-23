@@ -57,7 +57,7 @@
       "automerge": false
     },
     {
-      "description": "The rule above would automerge an Effect patch, but a patch has changed Schema behavior and --help here (4.0.6), so the effect PR waits for the Bump effect playbook in .cursor/rules/playbooks.mdc.",
+      "description": "The rule above would automerge an Effect patch, but a patch has changed Schema behavior and --help here (4.0.6), so the effect PR waits for the Bump effect playbook in CONTRIBUTING.md.",
       "matchPackageNames": ["effect", "@effect/**"],
       "automerge": false
     }
