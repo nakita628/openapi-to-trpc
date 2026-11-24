@@ -207,6 +207,11 @@ and is rewritten wholesale.
   for every validator library, and run: `test/` proves both for every library and layout.
 - A resolver starts as a stub that throws `TRPCError` `NOT_IMPLEMENTED`, so a declared `.output()`
   still type-checks before the user implements it.
+- The `appRouter` and the client carry the superjson transformer: an int64 is validated into a
+  `bigint`, which JSON alone cannot carry. tRPC serializes with the transformer of the router it
+  serves, so `<output>/index.ts` and the client are the two places that name it; a router file
+  keeps the `initTRPC.create()` it has. `superjson` is a dependency of the user's project, like
+  tRPC and the validator library, not of this package.
 - A construct a library cannot express fails generation with a message that names it rather than
   emitting code that breaks at runtime.
 

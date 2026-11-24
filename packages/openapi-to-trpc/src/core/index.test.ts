@@ -234,10 +234,11 @@ describe('makeFiles client', () => {
   it('creates the client on the router type at a same-origin path', async () => {
     expect(await clientCode({})).toStrictEqual([
       "import {createTRPCClient,httpBatchLink} from '@trpc/client'",
+      "import superjson from 'superjson'",
       '',
       "import type {appRouter} from './routes'",
       '',
-      'export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:"/"})]})',
+      'export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:"/",transformer:superjson})]})',
     ])
   })
 
@@ -261,7 +262,7 @@ describe('makeFiles client', () => {
   ])('reads %j into the link url', async (client, url, lines) => {
     const code = await clientCode(client)
     expect(code?.at(-1)).toBe(
-      `export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:${url}})]})`,
+      `export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:${url},transformer:superjson})]})`,
     )
     expect(code).toStrictEqual(expect.arrayContaining(lines))
   })
@@ -270,7 +271,7 @@ describe('makeFiles client', () => {
     const code = await clientCode({ import: '@packages/server', credentials: 'include' })
     expect(code).toContain("import type {appRouter} from '@packages/server'")
     expect(code?.at(-1)).toBe(
-      'export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:"/",fetch:(input,{signal,...init}={})=>fetch(input,{...init,...(signal&&{signal}),credentials:"include"})})]})',
+      'export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:"/",transformer:superjson,fetch:(input,{signal,...init}={})=>fetch(input,{...init,...(signal&&{signal}),credentials:"include"})})]})',
     )
   })
 })
@@ -351,10 +352,11 @@ export const realTimeEventsRouter = t.router({
 })
 `)
     expect(read('index.ts')).toBe(`import { initTRPC } from '@trpc/server'
+import superjson from 'superjson'
 import { realTimeEventsRouter } from './real-time-events'
 import { userProfilesRouter } from './user-profiles'
 
-const t = initTRPC.create()
+const t = initTRPC.create({ transformer: superjson })
 
 export const appRouter = t.router({
   realTimeEvents: realTimeEventsRouter,
@@ -586,10 +588,11 @@ paths:
     await generate(value)
     expect(list()).toStrictEqual(['index-2.ts', 'index.ts', 'trpc-client-2.ts', 'trpc-client.ts'])
     expect(read('index.ts')).toBe(`import { initTRPC } from '@trpc/server'
+import superjson from 'superjson'
 import { IndexRouter } from './index-2'
 import { trpcClientRouter } from './trpc-client-2'
 
-const t = initTRPC.create()
+const t = initTRPC.create({ transformer: superjson })
 
 export const appRouter = t.router({ Index: IndexRouter, trpcClient: trpcClientRouter })
 `)
