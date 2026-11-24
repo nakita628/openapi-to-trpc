@@ -37,13 +37,15 @@ pnpm dev     # tRPC server on http://localhost:3000/trpc, restarted on change
 pnpm test    # the router through a caller, and the generated client over HTTP
 ```
 
+The `appRouter` and the client use the superjson transformer, so over raw HTTP the input and the result are wrapped in `json`:
+
 ```bash
 curl -X POST localhost:3000/trpc/todos.postTodos \
-  -H 'content-type: application/json' -d '{"title":"Buy milk"}'
-# {"result":{"data":{"id":1,"title":"Buy milk","done":false,"createdAt":"..."}}}
+  -H 'content-type: application/json' -d '{"json":{"title":"Buy milk"}}'
+# {"result":{"data":{"json":{"id":1,"title":"Buy milk","done":false,"createdAt":"..."}}}}
 
-curl 'localhost:3000/trpc/todos.getTodos?input=%7B%7D'
-# {"result":{"data":[{"id":1,"title":"Buy milk","done":false,"createdAt":"..."}]}}
+curl 'localhost:3000/trpc/todos.getTodos?input=%7B%22json%22%3A%7B%7D%7D'
+# {"result":{"data":{"json":[{"id":1,"title":"Buy milk","done":false,"createdAt":"..."}]}}}
 ```
 
 From TypeScript, through the generated client:

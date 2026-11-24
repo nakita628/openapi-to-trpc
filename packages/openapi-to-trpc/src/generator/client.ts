@@ -32,7 +32,8 @@ function makeBaseUrl(baseUrl: BaseUrl) {
 /**
  * The typed tRPC client: `createTRPCClient<typeof appRouter>` over one `httpBatchLink`. Only the
  * type of the router is imported (`appRouter` from `router`), so no server code reaches the
- * bundle. `credentials` is passed on by the link's `fetch`, the way the tRPC guide sends
+ * bundle. The link carries the superjson transformer the `appRouter` is created with, without
+ * which neither side reads the other. `credentials` is passed on by the link's `fetch`, the way the tRPC guide sends
  * cookies, and nothing is written without it.
  */
 export function makeClient(router: string, baseUrl: BaseUrl, credentials?: Credentials) {
@@ -45,11 +46,12 @@ export function makeClient(router: string, baseUrl: BaseUrl, credentials?: Crede
         `,fetch:(input,{signal,...init}={})=>fetch(input,{...init,...(signal&&{signal}),credentials:${JSON.stringify(credentials)}})`
   return [
     "import {createTRPCClient,httpBatchLink} from '@trpc/client'",
+    "import superjson from 'superjson'",
     '',
     ...imports,
     `import type {appRouter} from '${router}'`,
     '',
     ...declarations.flatMap((declaration) => [declaration, '']),
-    `export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:${url}${fetch}})]})`,
+    `export const client=createTRPCClient<typeof appRouter>({links:[httpBatchLink({url:${url},transformer:superjson${fetch}})]})`,
   ].join('\n')
 }

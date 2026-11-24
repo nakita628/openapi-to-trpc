@@ -56,10 +56,44 @@ describe('generated routers', () => {
     await expect(client.posts.getPostsPostId.query({ postId: 0 })).rejects.toMatchObject({
       data: { code: 'BAD_REQUEST' },
     })
-    await expect(client.posts.getPostsPostId.query({ postId: 1 })).rejects.toMatchObject({
-      data: { code: 'NOT_IMPLEMENTED' },
-    })
+    await expect(
+      client.posts.putPostsPostId.mutate({ postId: 1, title: 'a' }),
+    ).rejects.toMatchObject({ data: { code: 'NOT_IMPLEMENTED' } })
     expect(requests.map((request) => request.credentials)).toStrictEqual(['include', 'include'])
+  })
+
+  // Where each layout's client sends its requests (see LAYOUTS in setup.ts), and so where the
+  // router is mounted: the zod and effect clients read it from the environment, the arktype one
+  // from its env module, and the valibot one is left on the default, the same-origin `/`.
+  it.each([
+    ['zod', '/trpc'],
+    ['valibot', '/'],
+    ['arktype', '/trpc'],
+    ['effect', '/trpc'],
+  ])('sends an int64 a resolver returns to the %s client as a bigint', async (schema, endpoint) => {
+    const { appRouter } = await import(`./__generated__/${schema}/routes/index.ts`)
+    vi.stubEnv('API_URL', 'http://localhost/trpc')
+    vi.stubEnv('VITE_API_URL', 'http://localhost/trpc')
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init: RequestInit = {}) =>
+      fetchRequestHandler({
+        endpoint,
+        // The valibot client asks for a same-origin path, which a page resolves on its origin.
+        req: new Request(
+          new URL(input instanceof Request ? input.url : input, 'http://localhost'),
+          init,
+        ),
+        router: appRouter,
+        createContext: () => ({}),
+      }),
+    )
+    const { client } = await import(`./__generated__/${schema}/client.ts`)
+    // The output validator decodes `views` into a bigint, which JSON alone cannot carry.
+    expect(await client.posts.getPostsPostId.query({ postId: 1 })).toStrictEqual({
+      id: 1,
+      title: 'a',
+      author: { id: '00000000-0000-4000-8000-000000000000', name: 'n' },
+      views: 5n,
+    })
   })
 
   it('does not annotate effect recursive schemas as Codec<any>', () => {

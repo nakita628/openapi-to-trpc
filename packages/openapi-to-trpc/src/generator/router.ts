@@ -56,12 +56,19 @@ export function makeRouter(router: string, procedures: readonly string[]) {
 /** A router of the `appRouter`: its camelCase name, and the file it is in (without `.ts`). */
 export type RouterFile = { readonly router: string; readonly file: string }
 
+/**
+ * The `appRouter`, created with the superjson transformer: an output validator decodes an int64
+ * into a `bigint`, which `JSON.stringify` refuses, so the response could not be written without
+ * one. tRPC serializes with the transformer of the router it serves, so this is the one place
+ * that sets it, and the router files (the user's) are left as they are.
+ */
 export function makeAppRouter(routers: readonly RouterFile[]) {
   return [
     "import {initTRPC} from '@trpc/server'",
+    "import superjson from 'superjson'",
     ...routers.map(({ router, file }) => `import {${router}Router} from './${file}'`),
     '',
-    'const t=initTRPC.create()',
+    'const t=initTRPC.create({transformer:superjson})',
     '',
     `export const appRouter=t.router({${routers.map(({ router }) => `${router}:${router}Router`).join(',')}})`,
   ].join('\n')

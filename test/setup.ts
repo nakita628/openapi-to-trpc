@@ -45,15 +45,39 @@ const ENVIRONMENT: { readonly [schema: string]: readonly [file: string, code: st
   ],
 }
 
-/** Generates one layout; a failure rejects with the config or generator error. */
+// A router file a user already wrote: one resolver, which answers a `Post` whose int64 `views`
+// the output validator decodes into a `bigint`. Generating merges the rest of the router into it.
+const POSTS = `import { initTRPC } from '@trpc/server'
+
+const t = initTRPC.create()
+
+export const postsRouter = t.router({
+  getPostsPostId: t.procedure.query(() => ({
+    id: 1,
+    title: 'a',
+    author: { id: '00000000-0000-4000-8000-000000000000', name: 'n' },
+    views: 5,
+  })),
+})
+`
+
+/**
+ * Generates one layout; a failure rejects with the config or generator error. `routers` are the
+ * router files that are there before the run, by file name.
+ */
 export function generate(
   spec: string,
   schema: string,
   root: string,
   components: object,
   client?: object,
+  routers: { readonly [file: string]: string } = {},
 ) {
   fs.rmSync(root, { recursive: true, force: true })
+  fs.mkdirSync(path.join(root, 'routes'), { recursive: true })
+  for (const [file, code] of Object.entries(routers)) {
+    fs.writeFileSync(path.join(root, 'routes', file), code)
+  }
   const program = Effect.gen(function* () {
     const config = yield* parseConfig({
       input: path.join(import.meta.dirname, 'specs', spec),
@@ -85,7 +109,7 @@ export default async function setup() {
   await Promise.all([
     ...Object.entries(LAYOUTS).map(async ([schema, { components, client }]) => {
       const root = path.join(OUT, schema)
-      await generate('openapi.yaml', schema, root, components, client)
+      await generate('openapi.yaml', schema, root, components, client, { 'posts.ts': POSTS })
       const environment = ENVIRONMENT[schema]
       if (environment) fs.writeFileSync(path.join(root, environment[0]), environment[1])
     }),

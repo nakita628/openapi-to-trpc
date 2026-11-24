@@ -14,6 +14,7 @@
     "@types/node": "^26.6.6",
     "arktype": "^2.2.10",
     "effect": "^4.1.5",
+    "superjson": "^2.2.7",
     "typescript": "^7.0.2",
     "valibot": "^1.5.0",
     "zod": "^4.6.7"

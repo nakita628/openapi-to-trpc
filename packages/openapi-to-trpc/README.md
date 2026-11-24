@@ -2,7 +2,10 @@
 
 ```bash
 npm install -D openapi-to-trpc
+npm install @trpc/server @trpc/client superjson
 ```
+
+The generated code imports [tRPC](https://trpc.io/), [superjson](https://github.com/flightcontrolhq/superjson) (the transformer of the `appRouter` and the client, see [Transformer](#transformer)) and the validator library you pick; they are dependencies of your project.
 
 ## OpenAPI to tRPC Code Generator
 
@@ -117,10 +120,11 @@ export const usersRouter = t.router({
 ```ts
 // src/routes/index.ts
 import { initTRPC } from '@trpc/server'
+import superjson from 'superjson'
 
 import { usersRouter } from './users'
 
-const t = initTRPC.create()
+const t = initTRPC.create({ transformer: superjson })
 
 export const appRouter = t.router({ users: usersRouter })
 ```
@@ -252,6 +256,14 @@ export default defineConfig({
 })
 ```
 
+### Transformer
+
+The `appRouter` is created with the [superjson](https://github.com/flightcontrolhq/superjson) transformer, and the generated client sends and reads with it. An `int64` is validated into a `bigint`, which JSON alone cannot carry: without a transformer a procedure whose output has one fails with `Do not know how to serialize a BigInt`. With it a `bigint` (and a `Date`, a `Map`, a `Set`) arrives as what the resolver returned. Install it next to tRPC: `npm install superjson`.
+
+- tRPC serializes with the transformer of the router it serves, so `src/routes/index.ts` is the one place that sets it. The router files keep their own `initTRPC.create()`, customized or not.
+- An `appRouter` you assemble yourself instead of the generated one needs it too: `initTRPC.create({ transformer: superjson })`.
+- Both sides have to agree. A client you write by hand passes it to its link, `httpBatchLink({ url, transformer: superjson })`, and a raw HTTP call wraps its input and reads the result under `json` (`{"json":{"title":"Buy milk"}}`).
+
 Recursive schemas (self or mutual `$ref` cycles) are supported for every validator library.
 
 ## Client
@@ -268,15 +280,16 @@ export default defineConfig({
 ```ts
 // src/client.ts
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
+import superjson from 'superjson'
 
 import type { appRouter } from './routes'
 
 export const client = createTRPCClient<typeof appRouter>({
-  links: [httpBatchLink({ url: '/trpc' })],
+  links: [httpBatchLink({ url: '/trpc', transformer: superjson })],
 })
 ```
 
-Then call `client.users.getUsersUserId.query({ userId })`. Only the type of the router is imported, so no server code reaches the client bundle. The file is rewritten on every run.
+Then call `client.users.getUsersUserId.query({ userId })`. Only the type of the router is imported, so no server code reaches the client bundle. The link carries the same [transformer](#transformer) as the `appRouter`. The file is rewritten on every run.
 
 | Option               | Sets                     | Meaning                                                 |
 | -------------------- | ------------------------ | ------------------------------------------------------- |
@@ -313,6 +326,7 @@ client: { output: 'src/client.ts', credentials: 'include' }
 ```ts
 httpBatchLink({
   url: '/',
+  transformer: superjson,
   fetch: (input, { signal, ...init } = {}) =>
     fetch(input, { ...init, ...(signal && { signal }), credentials: 'include' }),
 })
