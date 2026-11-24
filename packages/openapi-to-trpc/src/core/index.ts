@@ -223,23 +223,30 @@ function matchRouterFiles(
   const declared = new Map(
     Array.from(existing, ([file, code]) => [file, declaredRouters(code, routers)] as const),
   )
-  const owned = [...names].reduce((files, [router, name]) => {
-    const taken = new Set(files.values())
-    const holders = [...declared]
-      .filter(([file, list]) => !taken.has(file) && list.includes(router))
-      .map(([file]) => file)
-    const loose = looseName(name)
-    const file =
-      holders.find((holder) => holder === name) ??
-      holders.find((holder) => looseName(holder) === loose) ??
-      holders[0]
-    return file === undefined ? files : files.set(router, file)
-  }, new Map<string, string>())
-  const matched = [...names].reduce(
-    (files, [router, name]) =>
-      !files.has(router) && declared.get(name)?.length === 0 ? files.set(router, name) : files,
-    owned,
+  const expected = new Set(names.values())
+  // Every router first takes the holder named as expected, then every router one named
+  // loosely so, and only then any other holder, so that no router takes the file of another.
+  const picks: readonly ((holder: string, name: string) => boolean)[] = [
+    (holder, name) => holder === name,
+    (holder, name) => looseName(holder) === looseName(name),
+    (holder) => !expected.has(holder),
+  ]
+  const owned = picks.reduce(
+    (pass, isPick) =>
+      [...names].reduce((files, [router, name]) => {
+        if (files.has(router)) return files
+        const taken = new Set(files.values())
+        const file = [...declared].find(
+          ([holder, list]) => !taken.has(holder) && list.includes(router) && isPick(holder, name),
+        )?.[0]
+        return file === undefined ? files : files.set(router, file)
+      }, pass),
+    new Map<string, string>(),
   )
+  const matched = [...names].reduce((files, [router, name]) => {
+    const isFree = declared.get(name)?.length === 0 && ![...files.values()].includes(name)
+    return !files.has(router) && isFree ? files.set(router, name) : files
+  }, owned)
   return [...names].reduce((files, [router, name]) => {
     if (files.has(router)) return files
     const taken = new Set(

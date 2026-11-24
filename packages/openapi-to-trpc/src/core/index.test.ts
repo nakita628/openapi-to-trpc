@@ -485,6 +485,33 @@ export const appRouter = t.router({
     expect(index).toContain("import { userApiKeysRouter } from './user-api-keys-2'")
   })
 
+  it('leaves a router in its file when that file declares a router of a new path', async () => {
+    spec(['/posts'])
+    await generate()
+    implement('posts.ts')
+    const local = "\nconst commentsRouter = t.router({ list: t.procedure.query(() => 'mine') })\n"
+    fs.appendFileSync(path.join(routes(), 'posts.ts'), local)
+    spec(['/comments', '/posts'])
+    await generate()
+    expect(list()).toStrictEqual(['comments.ts', 'index.ts', 'posts.ts'])
+    expect(read('posts.ts')).toContain(".query(() => 'live')")
+    expect(read('posts.ts')).toContain("list: t.procedure.query(() => 'mine')")
+    expect(read('index.ts')).toContain("import { postsRouter } from './posts'")
+    expect(read('index.ts')).toContain("import { commentsRouter } from './comments'")
+  })
+
+  it('gives one file that declares no router to one router alone', async () => {
+    spec(['/Users', '/users'])
+    fs.mkdirSync(routes())
+    fs.writeFileSync(path.join(routes(), 'users.ts'), 'export const helper = 1\n')
+    await generate()
+    expect(list()).toStrictEqual(['index.ts', 'users-2.ts', 'users.ts'])
+    expect(read('users.ts')).toContain('export const UsersRouter')
+    expect(read('users.ts')).not.toContain('usersRouter')
+    expect(read('users-2.ts')).toContain('export const usersRouter')
+    expect(read('index.ts')).toContain("import { usersRouter } from './users-2'")
+  })
+
   it('gives no router the name of a file the generator rewrites', async () => {
     fs.writeFileSync(
       path.join(dir, 'events.yaml'),
