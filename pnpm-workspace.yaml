@@ -9,5 +9,5 @@ allowBuilds:
   # tsx (the todo example's runner) installs esbuild's native binary through this script.
   esbuild: true
 minimumReleaseAgeExclude:
-  - oas-truth@0.8.0
-  - schema-truth@0.8.8
+  - oas-truth@0.8.1
+  - schema-truth@0.8.16
