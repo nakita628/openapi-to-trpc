@@ -315,6 +315,18 @@ describe('fileNameCase', () => {
     fs.writeFileSync(path.join(routes(), file), implemented)
   }
 
+  /** Writes a document whose paths each answer a string. */
+  const spec = (paths: readonly string[]) => {
+    fs.writeFileSync(
+      path.join(dir, 'events.yaml'),
+      `openapi: 3.1.0
+info: { title: Users, version: 1.0.0 }
+paths:
+${paths.map((p) => `  ${p}:\n    get:\n      responses:\n        '200': { description: OK, content: { application/json: { schema: { type: string } } } }`).join('\n')}
+`,
+    )
+  }
+
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openapi-to-trpc-'))
     fs.writeFileSync(path.join(dir, 'events.yaml'), EVENTS)
@@ -399,13 +411,38 @@ export const appRouter = t.router({
     },
   )
 
-  it('takes the file named as expected before one that only matches loosely', async () => {
+  it('takes no file for a router file by its name alone', async () => {
+    fs.mkdirSync(routes())
+    const helper = "import { initTRPC } from '@trpc/server'\n\nexport const t = initTRPC.create()\n"
+    fs.writeFileSync(path.join(routes(), 'realTimeEvents.ts'), helper)
+    fs.writeFileSync(path.join(routes(), 'user_profiles.ts'), helper)
     await generate()
-    fs.writeFileSync(path.join(routes(), 'realTimeEvents.ts'), 'export const helper = 1\n')
+    expect(list()).toStrictEqual([
+      'index.ts',
+      'real-time-events.ts',
+      'realTimeEvents.ts',
+      'user-profiles.ts',
+      'user_profiles.ts',
+    ])
+    expect(read('realTimeEvents.ts')).toBe(helper)
+    expect(read('user_profiles.ts')).toBe(helper)
+    expect(read('index.ts')).toContain("import { realTimeEventsRouter } from './real-time-events'")
+  })
+
+  it('keeps a router in the file that declares it, whatever the file is called', async () => {
+    await generate()
     implement('real-time-events.ts')
+    fs.renameSync(path.join(routes(), 'real-time-events.ts'), path.join(routes(), 'events.ts'))
     await generate()
-    expect(read('realTimeEvents.ts')).toBe('export const helper = 1\n')
-    expect(read('real-time-events.ts')).toContain(".query(() => 'live')")
+    expect(list()).toStrictEqual(['events.ts', 'index.ts', 'user-profiles.ts'])
+    expect(read('events.ts')).toContain(".query(() => 'live')")
+    expect(read('index.ts')).toContain("import { realTimeEventsRouter } from './events'")
+  })
+
+  it('fails when the router directory cannot be listed', async () => {
+    fs.writeFileSync(routes(), '')
+    expect(await generate().catch((error: unknown) => error)).toBeInstanceOf(Error)
+    expect(fs.readFileSync(routes(), 'utf-8')).toBe('')
   })
 
   it('takes no generated file of the router directory for the file of a router', async () => {
@@ -422,7 +459,68 @@ export const appRouter = t.router({
     expect(read('real_time_events.ts')).not.toContain('realTimeEventsRouter')
   })
 
-  it('keeps the camelCase names of routers that kebab case would give one file', async () => {
+  it('leaves a router in its file when a new path takes the name of that file', async () => {
+    spec(['/Users', '/userAPIKeys'])
+    await generate()
+    expect(list()).toStrictEqual(['index.ts', 'user-api-keys.ts', 'users.ts'])
+    implement('users.ts')
+    implement('user-api-keys.ts')
+    spec(['/users', '/user-api-keys', '/Users', '/userAPIKeys'])
+    await generate()
+    expect(list()).toStrictEqual([
+      'index.ts',
+      'user-api-keys-2.ts',
+      'user-api-keys.ts',
+      'users-2.ts',
+      'users.ts',
+    ])
+    expect(read('users.ts')).toContain(".query(() => 'live')")
+    expect(read('users.ts')).not.toContain('usersRouter')
+    expect(read('user-api-keys.ts')).toContain(".query(() => 'live')")
+    expect(read('user-api-keys.ts')).not.toContain('userApiKeysRouter')
+    const index = read('index.ts')
+    expect(index).toContain("import { UsersRouter } from './users'")
+    expect(index).toContain("import { usersRouter } from './users-2'")
+    expect(index).toContain("import { userAPIKeysRouter } from './user-api-keys'")
+    expect(index).toContain("import { userApiKeysRouter } from './user-api-keys-2'")
+  })
+
+  it('gives no router the name of a file the generator rewrites', async () => {
+    fs.writeFileSync(
+      path.join(dir, 'events.yaml'),
+      `openapi: 3.1.0
+info: { title: Index, version: 1.0.0 }
+paths:
+  /Index:
+    get:
+      responses:
+        '200': { description: OK }
+  /trpcClient:
+    get:
+      responses:
+        '200': { description: OK }
+`,
+    )
+    const value = { client: { output: path.join(routes(), 'trpc-client.ts') } }
+    await generate(value)
+    await generate(value)
+    expect(list()).toStrictEqual(['index-2.ts', 'index.ts', 'trpc-client-2.ts', 'trpc-client.ts'])
+    expect(read('index.ts')).toBe(`import { initTRPC } from '@trpc/server'
+import { IndexRouter } from './index-2'
+import { trpcClientRouter } from './trpc-client-2'
+
+const t = initTRPC.create()
+
+export const appRouter = t.router({ Index: IndexRouter, trpcClient: trpcClientRouter })
+`)
+    expect(read('trpc-client.ts')).toContain('createTRPCClient')
+    expect(read('trpc-client.ts')).not.toContain('trpcClientRouter')
+  })
+
+  it.each([
+    ['kebab-case', ['2fa.ts', 'index.ts', 'user-api-keys-2.ts', 'user-api-keys.ts']],
+    ['camelCase', ['_2fa.ts', 'index.ts', 'userAPIKeys.ts', 'userApiKeys-2.ts']],
+  ])('numbers the files of routers that %s would give one file', async (fileNameCase, files) => {
     fs.writeFileSync(
       path.join(dir, 'events.yaml'),
       `openapi: 3.1.0
@@ -442,9 +540,12 @@ paths:
         '200': { description: OK }
 `,
     )
-    await generate()
-    expect(list()).toStrictEqual(['2fa.ts', 'index.ts', 'userAPIKeys.ts', 'userApiKeys.ts'])
-    expect(read('index.ts')).toContain("import { _2faRouter } from './2fa'")
+    await generate({ fileNameCase })
+    await generate({ fileNameCase })
+    expect(list()).toStrictEqual(files)
+    expect(read(files[3] ?? '')).toContain(
+      fileNameCase === 'kebab-case' ? 'userAPIKeysRouter' : 'userApiKeysRouter',
+    )
   })
 })
 

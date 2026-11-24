@@ -68,22 +68,20 @@ export function makeAppRouter(routers: readonly RouterFile[]) {
 }
 
 /**
- * The file name of each router, without `.ts`: the router name in kebab case, a change of case
- * being a word break and an acronym one word (`realTimeEvents` as `real-time-events`,
- * `userAPIKeys` as `user-api-keys`), or the router name itself with `camelCase`. Routers that
- * kebab case would give one file (`userAPIKeys` and `userApiKeys`) keep their own names.
+ * The file name each router is expected in, without `.ts`: the router name in kebab case, a
+ * change of case being a word break and an acronym one word (`realTimeEvents` as
+ * `real-time-events`, `userAPIKeys` as `user-api-keys`), as hono-takibi names its handler
+ * files, or the router name itself with `camelCase`. Two routers can be expected in one file
+ * (`userAPIKeys` and `userApiKeys`); the caller tells them apart.
  */
 export function makeRouterFileNames(
   routers: readonly string[],
   fileNameCase: 'kebab-case' | 'camelCase',
 ) {
-  const kebab = new Map(routers.map((router) => [router, toKebabCase(router)]))
-  const count = Map.groupBy(kebab.values(), (name) => name)
   return new Map(
     routers.map((router) => {
-      const name = kebab.get(router) ?? ''
-      const isOwn = fileNameCase === 'kebab-case' && name !== '' && count.get(name)?.length === 1
-      return [router, isOwn ? name : router]
+      const kebab = fileNameCase === 'kebab-case' ? toKebabCase(router) : ''
+      return [router, kebab === '' ? router : kebab]
     }),
   )
 }

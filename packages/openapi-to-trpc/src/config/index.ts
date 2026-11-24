@@ -243,7 +243,7 @@ const ConfigSchema = Schema.Struct({
     .annotate({
       title: 'Router file name case',
       description:
-        'How each router file is named: `kebab-case` (the default) writes the `realTimeEvents` router of `/real-time-events` to `real-time-events.ts`, `camelCase` to `realTimeEvents.ts`. Only the file name changes: the export (`realTimeEventsRouter`) and the key in the `appRouter` (`realTimeEvents`) stay camelCase. Either way an existing router file whose name matches once case, `-` and `_` are ignored stays the file of its router and keeps its name, so switching this renames no file.',
+        'How each router file is named: `kebab-case` (the default) writes the `realTimeEvents` router of `/real-time-events` to `real-time-events.ts`, `camelCase` to `realTimeEvents.ts`. Only the file name changes: the export (`realTimeEventsRouter`) and the key in the `appRouter` (`realTimeEvents`) stay camelCase. Either way a router stays in the existing file that declares it (`const realTimeEventsRouter`) and that file keeps its name, so switching this renames no file. A name that is taken is numbered (`users-2.ts`).',
       examples: ['kebab-case', 'camelCase'],
     }),
   readonly: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
