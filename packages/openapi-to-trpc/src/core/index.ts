@@ -23,7 +23,7 @@ import {
   makeRouterFileNames,
   makeRouterTypes,
 } from '../generator/router.js'
-import { mergeRouter } from '../merge/index.js'
+import { declaredNames, mergeRouter } from '../merge/index.js'
 
 export type GeneratedFile = {
   readonly path: string
@@ -93,23 +93,24 @@ function routerDirectory(config: Config) {
       .pipe(Effect.catchTag('PlatformError', () => Effect.succeed(false)))
     if (!found) return new Map<string, string>()
     const entries = yield* fs.readDirectory(directory)
-    const names = entries.filter((entry) => entry.endsWith('.ts')).toSorted()
-    // An entry that cannot be read as a file (a directory named `x.ts`) is no router file.
+    const names = entries.filter(isRouterFileName).toSorted()
+    // A directory named `x.ts` is no router file; a file that cannot be read fails the run.
+    const stats = yield* Effect.forEach(names, (name) => fs.stat(path.join(directory, name)), {
+      concurrency: 'unbounded',
+    })
+    const files = names.filter((_, index) => stats[index]?.type === 'File')
     const codes = yield* Effect.forEach(
-      names,
-      (name) =>
-        fs
-          .readFileString(path.join(directory, name))
-          .pipe(Effect.catchTag('PlatformError', () => Effect.succeed(undefined))),
+      files,
+      (name) => fs.readFileString(path.join(directory, name)),
       { concurrency: 'unbounded' },
     )
-    return new Map(
-      names.flatMap((name, index) => {
-        const code = codes[index]
-        return code === undefined ? [] : [[name, code] as const]
-      }),
-    )
+    return new Map(files.map((name, index) => [name, codes[index] ?? ''] as const))
   })
+}
+
+/** Whether a file of the router directory can be a router file: no declaration file, no test. */
+function isRouterFileName(entry: string) {
+  return entry.endsWith('.ts') && !/\.(?:d|test|spec)\.ts$/u.test(entry)
 }
 
 /**
@@ -193,10 +194,8 @@ function looseName(name: string) {
 
 /** The routers of `routers` a router file declares: `users` for `const usersRouter = …`. */
 function declaredRouters(code: string, routers: ReadonlySet<string>) {
-  return Array.from(
-    code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)Router\b/gu),
-    (match) => match[1] ?? '',
-  ).filter((router) => routers.has(router))
+  const declared = new Set(declaredNames(code))
+  return [...routers].filter((router) => declared.has(`${router}Router`))
 }
 
 /**
@@ -252,7 +251,8 @@ function matchRouterFiles(
     const taken = new Set(
       [...existing.keys(), ...reserved, ...files.values()].map((file) => file.toLowerCase()),
     )
-    const candidates = [name, ...Array.from(names, (_, index) => `${name}-${index + 2}`)]
+    // One candidate more than there are names taken: one of them is free.
+    const candidates = [name, ...Array.from(taken, (_, index) => `${name}-${index + 2}`)]
     const fresh = candidates.find((candidate) => !taken.has(candidate.toLowerCase()))
     return files.set(router, fresh ?? name)
   }, matched)

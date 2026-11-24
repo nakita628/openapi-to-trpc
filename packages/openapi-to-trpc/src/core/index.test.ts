@@ -429,6 +429,59 @@ export const appRouter = t.router({
     expect(read('index.ts')).toContain("import { realTimeEventsRouter } from './real-time-events'")
   })
 
+  it('takes a name in a comment, a test or a declaration file for no router', async () => {
+    fs.mkdirSync(routes())
+    const helper = '/** @example const realTimeEventsRouter = t.router({}) */\nexport const a = 1\n'
+    const declared = 'export const realTimeEventsRouter = 1\n'
+    fs.writeFileSync(path.join(routes(), 'trpc.ts'), helper)
+    fs.writeFileSync(path.join(routes(), 'events.test.ts'), declared)
+    fs.writeFileSync(path.join(routes(), 'events.d.ts'), declared)
+    await generate()
+    expect(list()).toStrictEqual([
+      'events.d.ts',
+      'events.test.ts',
+      'index.ts',
+      'real-time-events.ts',
+      'trpc.ts',
+      'user-profiles.ts',
+    ])
+    expect(read('trpc.ts')).toBe(helper)
+    expect(read('events.test.ts')).toBe(declared)
+  })
+
+  it('numbers a new router file past the numbered names that are taken', async () => {
+    spec(['/index', '/Users', '/users'])
+    fs.mkdirSync(routes())
+    for (const name of ['index-2.ts', 'users-2.ts', 'users-3.ts']) {
+      fs.writeFileSync(path.join(routes(), name), 'export const helper = 1\n')
+    }
+    await generate()
+    expect(list()).toStrictEqual([
+      'index-2.ts',
+      'index-3.ts',
+      'index.ts',
+      'users-2.ts',
+      'users-3.ts',
+      'users-4.ts',
+      'users.ts',
+    ])
+    expect(read('index.ts')).toContain('export const appRouter')
+    expect(read('index.ts')).toContain("import { indexRouter } from './index-3'")
+    expect(read('index.ts')).toContain("import { usersRouter } from './users-4'")
+    expect(read('users-2.ts')).toBe('export const helper = 1\n')
+  })
+
+  it('reads a directory named as a file of the router directory for no router file', async () => {
+    fs.mkdirSync(path.join(routes(), 'realTimeEvents.ts'), { recursive: true })
+    await generate()
+    expect(list()).toStrictEqual([
+      'index.ts',
+      'real-time-events.ts',
+      'realTimeEvents.ts',
+      'user-profiles.ts',
+    ])
+  })
+
   it('keeps a router in the file that declares it, whatever the file is called', async () => {
     await generate()
     implement('real-time-events.ts')
