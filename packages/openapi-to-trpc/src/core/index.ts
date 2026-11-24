@@ -16,7 +16,13 @@ import {
   schemaImportPath,
 } from '../generator/components.js'
 import type { Context, Kind } from '../generator/components.js'
-import { makeAppRouter, makeProcedures, makeRouter, makeRouterTypes } from '../generator/router.js'
+import {
+  makeAppRouter,
+  makeProcedures,
+  makeRouter,
+  makeRouterFileNames,
+  makeRouterTypes,
+} from '../generator/router.js'
 import { mergeRouter } from '../merge/index.js'
 
 export type GeneratedFile = {
@@ -60,8 +66,9 @@ export function openapiToTrpc(config: Config) {
     })
     if (!parsed.ok) return yield* new GenerateError({ message: parsed.error })
     const packageRoot = yield* packageRoots(config)
+    const existing = yield* routerDirectory(config)
     const files = yield* Effect.try({
-      try: () => makeFiles(parsed.value, config, packageRoot),
+      try: () => makeFiles(parsed.value, config, packageRoot, existing),
       catch: toGenerateError,
     })
     yield* Effect.all(
@@ -69,6 +76,17 @@ export function openapiToTrpc(config: Config) {
       { concurrency: 'unbounded' },
     )
     return `openapi-to-trpc: ${config.input} (${config.schema})`
+  })
+}
+
+/** The `.ts` files already in the router directory, sorted; none when it is not there yet. */
+function routerDirectory(config: Config) {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const entries = yield* fs
+      .readDirectory(path.resolve(config.output))
+      .pipe(Effect.catchTag('PlatformError', () => Effect.succeed<readonly string[]>([])))
+    return entries.filter((entry) => entry.endsWith('.ts')).toSorted()
   })
 }
 
@@ -146,14 +164,39 @@ function emit(file: GeneratedFile, options: FormatConfig | undefined) {
   })
 }
 
+/** A router file name with its case, `-` and `_` ignored, by which two names are compared. */
+function looseName(name: string) {
+  return name.replaceAll(/[-_]/gu, '').toLowerCase()
+}
+
+/**
+ * The file of each router, without `.ts`: the file named as expected when there is one, else an
+ * existing file whose name matches once case, `-` and `_` are ignored (`realTimeEvents.ts` for
+ * `real-time-events`, or a file renamed by hand), else the expected name. A project written in
+ * one case keeps its files when `fileNameCase` is switched. No file is taken twice.
+ */
+function matchRouterFiles(names: ReadonlyMap<string, string>, existing: readonly string[]) {
+  const exact = new Set([...names.values()].filter((name) => existing.includes(name)))
+  return [...names].reduce((files, [router, name]) => {
+    if (exact.has(name)) return files.set(router, name)
+    const taken = new Set([...exact, ...files.values()])
+    const loose = looseName(name)
+    const found = existing.find((file) => !taken.has(file) && looseName(file) === loose)
+    return files.set(router, found ?? name)
+  }, new Map<string, string>())
+}
+
 /**
  * Every file to write, as unformatted code keyed by absolute path. `packageRoot` tells which
  * package a file is written into; left out, every file is taken to be in one package.
+ * `existing` is the `.ts` files already in the router directory, by which a router keeps the
+ * file it is in (see `matchRouterFiles`); left out, every router file is taken to be new.
  */
 export function makeFiles(
   openapi: OpenAPI,
   config: Config,
   packageRoot: PackageRoot = () => undefined,
+  existing: readonly string[] = [],
 ): readonly GeneratedFile[] {
   const components = openapi.components ?? {}
   const targets = makeTargets(config)
@@ -181,20 +224,38 @@ export function makeFiles(
   const routesDir = path.resolve(config.output)
   const appRouter = { name: 'output', output: path.join(routesDir, 'index.ts'), package: undefined }
   const procedures = makeProcedures(openapi, context)
-  const routerFiles = Array.from(procedures, ([router, list]) => {
-    const file = path.join(routesDir, `${router}.ts`)
+  const typeFile = config.type && path.resolve(config.type.output)
+  const clientFile = config.client && path.resolve(config.client.output)
+  // What the generator rewrites wholesale is no router file, wherever it is written.
+  const rewritten = new Set([
+    appRouter.output,
+    typeFile,
+    clientFile,
+    ...componentFiles.map((file) => file.path),
+  ])
+  const fileOf = matchRouterFiles(
+    makeRouterFileNames([...procedures.keys()], config.fileNameCase),
+    existing
+      .filter((entry) => !rewritten.has(path.join(routesDir, entry)))
+      .map((entry) => entry.slice(0, -'.ts'.length)),
+  )
+  const routers = Array.from(procedures, ([router, list]) => ({
+    router,
+    file: fileOf.get(router) ?? router,
+    list,
+  }))
+  const routerFiles = routers.map(({ router, file: name, list }) => {
+    const file = path.join(routesDir, `${name}.ts`)
     const code = makeModule(makeRouter(router, list), context, toSchemas('output', file), [
       "import {initTRPC,TRPCError} from '@trpc/server'",
     ])
     return { path: file, code, merge: true }
   })
-  const typeFile = config.type && path.resolve(config.type.output)
-  const clientFile = config.client && path.resolve(config.client.output)
 
   return [
     ...componentFiles,
     ...routerFiles,
-    { path: appRouter.output, code: makeAppRouter([...procedures.keys()]) },
+    { path: appRouter.output, code: makeAppRouter(routers) },
     ...(typeFile
       ? [{ path: typeFile, code: makeRouterTypes(importOf('type', typeFile, appRouter, true)) }]
       : []),

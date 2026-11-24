@@ -5,7 +5,7 @@ import path from 'node:path'
 import * as NodeServices from '@effect/platform-node/NodeServices'
 import { Effect } from 'effect'
 import { parseOpenAPI } from 'oas-truth'
-import { describe, expect, it } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import { parseConfig } from '../config/index.js'
 import { makeFiles, openapiToTrpc } from './index.js'
@@ -36,7 +36,7 @@ describe('makeFiles', () => {
     expect(files.map((file) => path.relative(process.cwd(), file.path))).toStrictEqual([
       'src/components/index.ts',
       'src/routes/posts.ts',
-      'src/routes/userProfiles.ts',
+      'src/routes/user-profiles.ts',
       'src/routes/index.ts',
     ])
     expect(files[1]?.code.split('\n').slice(0, 4)).toStrictEqual([
@@ -275,6 +275,179 @@ describe('makeFiles client', () => {
   })
 })
 
+const EVENTS = `openapi: 3.1.0
+info: { title: Events, version: 1.0.0 }
+paths:
+  /real-time-events:
+    get:
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: string }
+  /user_profiles/{id}:
+    get:
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+`
+
+const STUB = /\.query\(\(\) => \{\s*throw new TRPCError\(\{ code: 'NOT_IMPLEMENTED' \}\)\s*\}\)/u
+
+describe('fileNameCase', () => {
+  let dir = ''
+  const routes = () => path.join(dir, 'routes')
+  const list = () => fs.readdirSync(routes()).sort()
+  const read = (file: string) => fs.readFileSync(path.join(routes(), file), 'utf-8')
+  const generate = (value: object = {}) =>
+    run({
+      input: path.join(dir, 'events.yaml'),
+      output: routes(),
+      components: { output: path.join(dir, 'components.ts') },
+      ...value,
+    })
+  /** Replaces the stub of the one procedure of a router file with a resolver. */
+  const implement = (file: string) => {
+    const implemented = read(file).replace(STUB, ".query(() => 'live')")
+    expect(implemented).toContain(".query(() => 'live')")
+    fs.writeFileSync(path.join(routes(), file), implemented)
+  }
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openapi-to-trpc-'))
+    fs.writeFileSync(path.join(dir, 'events.yaml'), EVENTS)
+  })
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true })
+  })
+
+  it('names a fresh router file in kebab case and keeps the camelCase export and key', async () => {
+    await generate()
+    expect(list()).toStrictEqual(['index.ts', 'real-time-events.ts', 'user-profiles.ts'])
+    expect(read('real-time-events.ts')).toBe(`import { initTRPC, TRPCError } from '@trpc/server'
+import * as z from 'zod'
+
+const t = initTRPC.create()
+
+export const realTimeEventsRouter = t.router({
+  getRealTimeEvents: t.procedure.output(z.string()).query(() => {
+    throw new TRPCError({ code: 'NOT_IMPLEMENTED' })
+  }),
+})
+`)
+    expect(read('index.ts')).toBe(`import { initTRPC } from '@trpc/server'
+import { realTimeEventsRouter } from './real-time-events'
+import { userProfilesRouter } from './user-profiles'
+
+const t = initTRPC.create()
+
+export const appRouter = t.router({
+  realTimeEvents: realTimeEventsRouter,
+  userProfiles: userProfilesRouter,
+})
+`)
+  })
+
+  it("names a fresh router file after the router with 'camelCase'", async () => {
+    await generate({ fileNameCase: 'camelCase' })
+    expect(list()).toStrictEqual(['index.ts', 'realTimeEvents.ts', 'userProfiles.ts'])
+    expect(read('index.ts')).toContain("import { realTimeEventsRouter } from './realTimeEvents'")
+  })
+
+  it('keeps an implemented resolver when regenerating', async () => {
+    await generate()
+    implement('real-time-events.ts')
+    await generate()
+    expect(list()).toStrictEqual(['index.ts', 'real-time-events.ts', 'user-profiles.ts'])
+    expect(read('real-time-events.ts')).toContain(".query(() => 'live')")
+  })
+
+  it.each([
+    ['camelCase', 'kebab-case', 'realTimeEvents'],
+    ['kebab-case', 'camelCase', 'real-time-events'],
+  ])('keeps the files of a project generated in %s when switched to %s', async (from, to, file) => {
+    await generate({ fileNameCase: from })
+    const before = list()
+    implement(`${file}.ts`)
+    await generate({ fileNameCase: to })
+    expect(list()).toStrictEqual(before)
+    expect(read(`${file}.ts`)).toContain(".query(() => 'live')")
+    expect(read('index.ts')).toContain(`import { realTimeEventsRouter } from './${file}'`)
+  })
+
+  it.each(['kebab-case', 'camelCase'])(
+    'keeps a file renamed by hand in the app router with %s',
+    async (fileNameCase) => {
+      await generate({ fileNameCase })
+      const [events, profiles] =
+        fileNameCase === 'kebab-case'
+          ? ['real-time-events.ts', 'user-profiles.ts']
+          : ['realTimeEvents.ts', 'userProfiles.ts']
+      implement(events)
+      fs.renameSync(path.join(routes(), events), path.join(routes(), 'real_time_events.ts'))
+      fs.renameSync(path.join(routes(), profiles), path.join(routes(), 'UserProfiles.ts'))
+      await generate({ fileNameCase })
+      expect(list()).toStrictEqual(['UserProfiles.ts', 'index.ts', 'real_time_events.ts'])
+      expect(read('real_time_events.ts')).toContain(".query(() => 'live')")
+      expect(read('index.ts')).toContain(
+        "import { realTimeEventsRouter } from './real_time_events'",
+      )
+      expect(read('index.ts')).toContain("import { userProfilesRouter } from './UserProfiles'")
+    },
+  )
+
+  it('takes the file named as expected before one that only matches loosely', async () => {
+    await generate()
+    fs.writeFileSync(path.join(routes(), 'realTimeEvents.ts'), 'export const helper = 1\n')
+    implement('real-time-events.ts')
+    await generate()
+    expect(read('realTimeEvents.ts')).toBe('export const helper = 1\n')
+    expect(read('real-time-events.ts')).toContain(".query(() => 'live')")
+  })
+
+  it('takes no generated file of the router directory for the file of a router', async () => {
+    const value = { type: { output: path.join(routes(), 'real_time_events.ts') } }
+    await generate(value)
+    await generate(value)
+    expect(list()).toStrictEqual([
+      'index.ts',
+      'real-time-events.ts',
+      'real_time_events.ts',
+      'user-profiles.ts',
+    ])
+    expect(read('real_time_events.ts')).toContain('export type RouterInputs')
+    expect(read('real_time_events.ts')).not.toContain('realTimeEventsRouter')
+  })
+
+  it('keeps the camelCase names of routers that kebab case would give one file', async () => {
+    fs.writeFileSync(
+      path.join(dir, 'events.yaml'),
+      `openapi: 3.1.0
+info: { title: Keys, version: 1.0.0 }
+paths:
+  /userAPIKeys:
+    get:
+      responses:
+        '200': { description: OK }
+  /user-api-keys:
+    get:
+      responses:
+        '200': { description: OK }
+  /2fa:
+    get:
+      responses:
+        '200': { description: OK }
+`,
+    )
+    await generate()
+    expect(list()).toStrictEqual(['2fa.ts', 'index.ts', 'userAPIKeys.ts', 'userApiKeys.ts'])
+    expect(read('index.ts')).toContain("import { _2faRouter } from './2fa'")
+  })
+})
+
 describe('openapiToTrpc', () => {
   it('keeps an implemented resolver when regenerating', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openapi-to-trpc-'))
@@ -282,7 +455,7 @@ describe('openapiToTrpc', () => {
       output: path.join(dir, 'routes'),
       components: { output: path.join(dir, 'components.ts') },
     }
-    const router = path.join(dir, 'routes/userProfiles.ts')
+    const router = path.join(dir, 'routes/user-profiles.ts')
     await run(value)
     const stub = fs.readFileSync(router, 'utf-8')
     const implemented = stub.replace(

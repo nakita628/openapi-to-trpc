@@ -71,7 +71,7 @@ describe('openapi-to-trpc <input>', () => {
       'routers',
       'routers/index.ts',
       'routers/posts.ts',
-      'routers/userProfiles.ts',
+      'routers/user-profiles.ts',
     ])
     expect(fs.readFileSync(path.join(dir, 'server/routers/posts.ts'), 'utf-8')).toContain(
       "import * as v from 'valibot'",
