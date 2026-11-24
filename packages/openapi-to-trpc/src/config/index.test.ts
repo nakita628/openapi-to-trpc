@@ -37,12 +37,25 @@ describe('parseConfig', () => {
       input: 'openapi.yaml',
       schema: 'zod',
       output: 'src/routes',
+      fileNameCase: 'kebab-case',
       readonly: false,
       components: {
         schemas: { output: 'src/schemas', split: false, exportTypes: true },
         responses: { output: 'src/responses', split: true },
       },
     })
+  })
+
+  it.each([
+    [undefined, 'kebab-case'],
+    ['kebab-case', 'kebab-case'],
+    ['camelCase', 'camelCase'],
+  ])('reads fileNameCase %j as %j', (fileNameCase, decoded) => {
+    const config = {
+      input: 'openapi.yaml',
+      ...(fileNameCase === undefined ? {} : { fileNameCase }),
+    }
+    expect(Effect.runSync(parseConfig(config)).fileNameCase).toBe(decoded)
   })
 
   it('takes the package of each components output and the path alias', () => {
@@ -64,6 +77,10 @@ describe('parseConfig', () => {
     [
       { input: 'openapi.yaml', schema: 'yup' },
       'schema: Expected "zod" | "valibot" | "arktype" | "effect"',
+    ],
+    [
+      { input: 'openapi.yaml', fileNameCase: 'snake_case' },
+      'fileNameCase: Expected "kebab-case" | "camelCase"',
     ],
     [
       { input: 'openapi.yaml', output: 'src/routes.ts' },

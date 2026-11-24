@@ -53,15 +53,46 @@ export function makeRouter(router: string, procedures: readonly string[]) {
   return `const t=initTRPC.create()\n\nexport const ${router}Router=t.router({${procedures.join(',')}})`
 }
 
-export function makeAppRouter(routers: readonly string[]) {
+/** A router of the `appRouter`: its camelCase name, and the file it is in (without `.ts`). */
+export type RouterFile = { readonly router: string; readonly file: string }
+
+export function makeAppRouter(routers: readonly RouterFile[]) {
   return [
     "import {initTRPC} from '@trpc/server'",
-    ...routers.map((router) => `import {${router}Router} from './${router}'`),
+    ...routers.map(({ router, file }) => `import {${router}Router} from './${file}'`),
     '',
     'const t=initTRPC.create()',
     '',
-    `export const appRouter=t.router({${routers.map((r) => `${r}:${r}Router`).join(',')}})`,
+    `export const appRouter=t.router({${routers.map(({ router }) => `${router}:${router}Router`).join(',')}})`,
   ].join('\n')
+}
+
+/**
+ * The file name each router is expected in, without `.ts`: the router name in kebab case, a
+ * change of case being a word break and an acronym one word (`realTimeEvents` as
+ * `real-time-events`, `userAPIKeys` as `user-api-keys`), as hono-takibi names its handler
+ * files, or the router name itself with `camelCase`. Two routers can be expected in one file
+ * (`userAPIKeys` and `userApiKeys`); the caller tells them apart.
+ */
+export function makeRouterFileNames(
+  routers: readonly string[],
+  fileNameCase: 'kebab-case' | 'camelCase',
+) {
+  return new Map(
+    routers.map((router) => {
+      const kebab = fileNameCase === 'kebab-case' ? toKebabCase(router) : ''
+      return [router, kebab === '' ? router : kebab]
+    }),
+  )
+}
+
+function toKebabCase(name: string) {
+  return name
+    .replaceAll(/[^0-9A-Za-z]+/gu, '-')
+    .replaceAll(/([a-z0-9])([A-Z])/gu, '$1-$2')
+    .replaceAll(/([A-Z])([A-Z][a-z])/gu, '$1-$2')
+    .replaceAll(/^-+|-+$/gu, '')
+    .toLowerCase()
 }
 
 export function makeRouterTypes(appRouter: string) {

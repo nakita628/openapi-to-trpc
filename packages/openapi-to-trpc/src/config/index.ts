@@ -238,6 +238,14 @@ const ConfigSchema = Schema.Struct({
     description: 'One router file per resource, plus the `appRouter` in index.ts.',
     examples: ['src/routes', './server/routers'],
   }),
+  fileNameCase: Schema.Literals(['kebab-case', 'camelCase'])
+    .pipe(Schema.withDecodingDefault(Effect.succeed('kebab-case')))
+    .annotate({
+      title: 'Router file name case',
+      description:
+        'How each router file is named: `kebab-case` (the default) writes the `realTimeEvents` router of `/real-time-events` to `real-time-events.ts`, `camelCase` to `realTimeEvents.ts`. Only the file name changes: the export (`realTimeEventsRouter`) and the key in the `appRouter` (`realTimeEvents`) stay camelCase. Either way a router stays in the existing file that declares it (`const realTimeEventsRouter`) and that file keeps its name, so switching this renames no file. A name that is taken is numbered (`users-2.ts`).',
+      examples: ['kebab-case', 'camelCase'],
+    }),
   readonly: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))).annotate({
     description: '`as const` on the data components (responses, examples, links, ...).',
   }),

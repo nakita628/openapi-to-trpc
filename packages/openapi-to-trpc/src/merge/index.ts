@@ -57,6 +57,18 @@ export function mergeRouter(existing: string, generated: string) {
   return `${imports.map((decl) => decl.getText()).join('\n')}\n${body}`
 }
 
+/**
+ * The names a router file declares at its top level, where `mergeRouter` looks for the router:
+ * a name in a comment, a string or a nested scope is not one.
+ */
+export function declaredNames(code: string) {
+  const project = new Project({ useInMemoryFileSystem: true })
+  return project
+    .createSourceFile('file.ts', code)
+    .getVariableDeclarations()
+    .map((decl) => decl.getName())
+}
+
 /** The object literal passed to `t.router(...)` by the `name` declaration. */
 function findRouter(file: SourceFile, name: string) {
   return file

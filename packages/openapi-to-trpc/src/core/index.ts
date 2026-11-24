@@ -16,8 +16,14 @@ import {
   schemaImportPath,
 } from '../generator/components.js'
 import type { Context, Kind } from '../generator/components.js'
-import { makeAppRouter, makeProcedures, makeRouter, makeRouterTypes } from '../generator/router.js'
-import { mergeRouter } from '../merge/index.js'
+import {
+  makeAppRouter,
+  makeProcedures,
+  makeRouter,
+  makeRouterFileNames,
+  makeRouterTypes,
+} from '../generator/router.js'
+import { declaredNames, mergeRouter } from '../merge/index.js'
 
 export type GeneratedFile = {
   readonly path: string
@@ -60,8 +66,9 @@ export function openapiToTrpc(config: Config) {
     })
     if (!parsed.ok) return yield* new GenerateError({ message: parsed.error })
     const packageRoot = yield* packageRoots(config)
+    const existing = yield* routerDirectory(config)
     const files = yield* Effect.try({
-      try: () => makeFiles(parsed.value, config, packageRoot),
+      try: () => makeFiles(parsed.value, config, packageRoot, existing),
       catch: toGenerateError,
     })
     yield* Effect.all(
@@ -70,6 +77,40 @@ export function openapiToTrpc(config: Config) {
     )
     return `openapi-to-trpc: ${config.input} (${config.schema})`
   })
+}
+
+/**
+ * The `.ts` files already in the router directory with their code; none when it is not there
+ * yet. A directory that is there and cannot be listed fails the run: taken for empty, every
+ * router would be written to a new file.
+ */
+function routerDirectory(config: Config) {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const directory = path.resolve(config.output)
+    const found = yield* fs
+      .exists(directory)
+      .pipe(Effect.catchTag('PlatformError', () => Effect.succeed(false)))
+    if (!found) return new Map<string, string>()
+    const entries = yield* fs.readDirectory(directory)
+    const names = entries.filter(isRouterFileName).toSorted()
+    // A directory named `x.ts` is no router file; a file that cannot be read fails the run.
+    const stats = yield* Effect.forEach(names, (name) => fs.stat(path.join(directory, name)), {
+      concurrency: 'unbounded',
+    })
+    const files = names.filter((_, index) => stats[index]?.type === 'File')
+    const codes = yield* Effect.forEach(
+      files,
+      (name) => fs.readFileString(path.join(directory, name)),
+      { concurrency: 'unbounded' },
+    )
+    return new Map(files.map((name, index) => [name, codes[index] ?? ''] as const))
+  })
+}
+
+/** Whether a file of the router directory can be a router file: no declaration file, no test. */
+function isRouterFileName(entry: string) {
+  return entry.endsWith('.ts') && !/\.(?:d|test|spec)\.ts$/u.test(entry)
 }
 
 /**
@@ -146,14 +187,89 @@ function emit(file: GeneratedFile, options: FormatConfig | undefined) {
   })
 }
 
+/** A router file name with its case, `-` and `_` ignored, by which two names are compared. */
+function looseName(name: string) {
+  return name.replaceAll(/[-_]/gu, '').toLowerCase()
+}
+
+/** The routers of `routers` a router file declares: `users` for `const usersRouter = …`. */
+function declaredRouters(code: string, routers: ReadonlySet<string>) {
+  const declared = new Set(declaredNames(code))
+  return [...routers].filter((router) => declared.has(`${router}Router`))
+}
+
+/**
+ * The file of each router, without `.ts`. `names` is the expected name of each router,
+ * `existing` the code of the files of the router directory by name, and `reserved` the names
+ * there that the generator rewrites wholesale (`index`), which no router takes.
+ *
+ * A router stays in the file that declares it (`const usersRouter`): a project written in one
+ * case keeps its files when `fileNameCase` is switched, and so does a file renamed by hand.
+ * Among several such files the one named as expected comes first, then one whose name matches
+ * once case, `-` and `_` are ignored. A file is never handed to another router than the one it
+ * holds, and a file that merely has a similar name (a helper) is not a router file. A router no
+ * file declares takes the file named as expected when that declares no generated router, and is
+ * otherwise new: it gets the expected name, numbered (`users-2`) when that is taken. No file is
+ * taken twice, and two names that differ by case alone count as one, as a case-insensitive
+ * filesystem has it.
+ */
+function matchRouterFiles(
+  names: ReadonlyMap<string, string>,
+  existing: ReadonlyMap<string, string>,
+  reserved: ReadonlySet<string>,
+) {
+  const routers = new Set(names.keys())
+  const declared = new Map(
+    Array.from(existing, ([file, code]) => [file, declaredRouters(code, routers)] as const),
+  )
+  const expected = new Set(names.values())
+  // Every router first takes the holder named as expected, then every router one named
+  // loosely so, and only then any other holder, so that no router takes the file of another.
+  const picks: readonly ((holder: string, name: string) => boolean)[] = [
+    (holder, name) => holder === name,
+    (holder, name) => looseName(holder) === looseName(name),
+    (holder) => !expected.has(holder),
+  ]
+  const owned = picks.reduce(
+    (pass, isPick) =>
+      [...names].reduce((files, [router, name]) => {
+        if (files.has(router)) return files
+        const taken = new Set(files.values())
+        const file = [...declared].find(
+          ([holder, list]) => !taken.has(holder) && list.includes(router) && isPick(holder, name),
+        )?.[0]
+        return file === undefined ? files : files.set(router, file)
+      }, pass),
+    new Map<string, string>(),
+  )
+  const matched = [...names].reduce((files, [router, name]) => {
+    const isFree = declared.get(name)?.length === 0 && ![...files.values()].includes(name)
+    return !files.has(router) && isFree ? files.set(router, name) : files
+  }, owned)
+  return [...names].reduce((files, [router, name]) => {
+    if (files.has(router)) return files
+    const taken = new Set(
+      [...existing.keys(), ...reserved, ...files.values()].map((file) => file.toLowerCase()),
+    )
+    // One candidate more than there are names taken: one of them is free.
+    const candidates = [name, ...Array.from(taken, (_, index) => `${name}-${index + 2}`)]
+    const fresh = candidates.find((candidate) => !taken.has(candidate.toLowerCase()))
+    return files.set(router, fresh ?? name)
+  }, matched)
+}
+
 /**
  * Every file to write, as unformatted code keyed by absolute path. `packageRoot` tells which
  * package a file is written into; left out, every file is taken to be in one package.
+ * `existing` is the code of the `.ts` files already in the router directory by file name, by
+ * which a router keeps the file it is in (see `matchRouterFiles`); left out, every router file
+ * is taken to be new.
  */
 export function makeFiles(
   openapi: OpenAPI,
   config: Config,
   packageRoot: PackageRoot = () => undefined,
+  existing: ReadonlyMap<string, string> = new Map(),
 ): readonly GeneratedFile[] {
   const components = openapi.components ?? {}
   const targets = makeTargets(config)
@@ -181,20 +297,42 @@ export function makeFiles(
   const routesDir = path.resolve(config.output)
   const appRouter = { name: 'output', output: path.join(routesDir, 'index.ts'), package: undefined }
   const procedures = makeProcedures(openapi, context)
-  const routerFiles = Array.from(procedures, ([router, list]) => {
-    const file = path.join(routesDir, `${router}.ts`)
+  const typeFile = config.type && path.resolve(config.type.output)
+  const clientFile = config.client && path.resolve(config.client.output)
+  // What the generator rewrites wholesale is no router file, wherever it is written.
+  const reserved = new Set(
+    [appRouter.output, typeFile, clientFile, ...componentFiles.map((file) => file.path)].flatMap(
+      (file) =>
+        file !== undefined && path.dirname(file) === routesDir ? [path.basename(file, '.ts')] : [],
+    ),
+  )
+  const fileOf = matchRouterFiles(
+    makeRouterFileNames([...procedures.keys()], config.fileNameCase),
+    new Map(
+      Array.from(
+        existing,
+        ([entry, code]) => [entry.slice(0, -'.ts'.length), code] as const,
+      ).filter(([name]) => !reserved.has(name)),
+    ),
+    reserved,
+  )
+  const routers = Array.from(procedures, ([router, list]) => ({
+    router,
+    file: fileOf.get(router) ?? router,
+    list,
+  }))
+  const routerFiles = routers.map(({ router, file: name, list }) => {
+    const file = path.join(routesDir, `${name}.ts`)
     const code = makeModule(makeRouter(router, list), context, toSchemas('output', file), [
       "import {initTRPC,TRPCError} from '@trpc/server'",
     ])
     return { path: file, code, merge: true }
   })
-  const typeFile = config.type && path.resolve(config.type.output)
-  const clientFile = config.client && path.resolve(config.client.output)
 
   return [
     ...componentFiles,
     ...routerFiles,
-    { path: appRouter.output, code: makeAppRouter([...procedures.keys()]) },
+    { path: appRouter.output, code: makeAppRouter(routers) },
     ...(typeFile
       ? [{ path: typeFile, code: makeRouterTypes(importOf('type', typeFile, appRouter, true)) }]
       : []),
